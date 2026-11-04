@@ -39,6 +39,7 @@ var _beat_t := 0.0
 ## debug counters (flag sfx_stats)
 var played := {}
 var throttled := 0
+var track_log: Array[String] = []
 
 func _exit_tree() -> void:
 	if main == self:
@@ -186,6 +187,7 @@ func _set_track(t: String) -> void:
 	if t == _track:
 		return
 	_track = t
+	track_log.append(t if t != "" else "-")
 	_cur = 1 - _cur
 	var m := _music[_cur]
 	if not _tracks.has(t):

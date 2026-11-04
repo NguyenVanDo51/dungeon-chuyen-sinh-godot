@@ -16,3 +16,7 @@ Orc, Orc_Skull, Demon: **Quaternius — Ultimate Monsters** (https://quaternius.
 ## Âm thanh
 - **Kenney** — [Impact Sounds](https://kenney.nl/assets/impact-sounds), [RPG Audio](https://kenney.nl/assets/rpg-audio), [Interface Sounds](https://kenney.nl/assets/interface-sounds), license **CC0**. File `assets/sfx/default/*/k_*.ogg` (tên gốc sau `k_`).
 - `assets/sfx/default/*/synth_*.wav`: tổng hợp bằng code, `tools/gen_sfx.gd`.
+- Nhạc (`assets/music/default/`), tất cả **CC0** từ OpenGameArt:
+  - `menu.ogg`: *Ancient caverns*, congusbongus, https://opengameart.org/content/ancient-caverns-horror-ambient-loop
+  - `combat.ogg`: *Heavy Dungeon*, MintoDog, https://opengameart.org/content/heavy-dungeon
+  - `boss.ogg`: *Battle RPG Theme (Var)*, CleytonKauffman, https://opengameart.org/content/boss-battle-theme

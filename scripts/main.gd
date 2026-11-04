@@ -436,7 +436,7 @@ func _process(delta: float) -> void:
 		if flags.has("bot"):
 			print("RUN END: %s at %s lv%d kills%d" % [world.state, Ui.fmt_time(world.time), world.level, world.kills])
 		if flags.has("sfx_stats"):
-			print("SFX played %s throttled %d" % [sfx.played, sfx.throttled])
+			print("SFX played %s throttled %d music %s" % [sfx.played, sfx.throttled, sfx.track_log])
 	_finish_frame(dt, stopped)
 
 func _finish_frame(dt: float, stopped: bool) -> void:
@@ -552,7 +552,7 @@ func _screenshots() -> void:
 	if not flags.has("shots"):
 		if flags.has("quit_at") and world.time >= float(flags.quit_at):
 			if flags.has("sfx_stats"):
-				print("SFX played %s throttled %d" % [sfx.played, sfx.throttled])
+				print("SFX played %s throttled %d music %s" % [sfx.played, sfx.throttled, sfx.track_log])
 			get_tree().quit()
 		return
 	if _shot_at.size() > 0 and world.time >= _shot_at[0]:
