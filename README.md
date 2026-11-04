@@ -13,8 +13,9 @@ Gốc so sánh: TS commit `16a1087` (2026-11-04).
 - 2 nhân vật: Thạch Kiên (Kiếm sĩ, Thánh Nộ) · Lam Vũ (Cung thủ, Lăn Né, Chân Nhẹ).
 - 8 vũ khí + 6 chỉ số, mỗi vũ khí 1 kỹ năng ẩn; 4 loại nhiệm vụ; 4 vật phẩm.
 - Vàng, cửa hàng (mua nhân vật, 6 nâng cấp vĩnh viễn), lưu tiến trình `user://meta.json`.
+- Màn bắt đầu hiện mô hình 3D của nhân vật đang dùng. Đổi nhân vật ở **Nhân vật (C)**: chọn 1 lần là lưu (`selected` trong meta.json), mọi ván sau (Sinh tồn, Dungeon) vào thẳng, không hỏi lại.
 
-Phím: `WASD`/mũi tên di chuyển · `Space` kỹ năng · `1 2 3` chọn thẻ · `Esc` tạm dừng / quay lại · `Enter` chọn / bắt đầu · `M` tắt/bật tiếng.
+Phím: `WASD`/mũi tên di chuyển · `Space` kỹ năng · `1 2 3` chọn thẻ / nhân vật · `C` màn nhân vật (ở menu) · `Esc` tạm dừng / quay lại · `Enter` chọn / bắt đầu · `M` tắt/bật tiếng.
 
 ## Thay đổi nội dung (không đụng code)
 | Muốn đổi | Sửa ở |

@@ -62,6 +62,7 @@ func _ready() -> void:
 				meta.owned.append(c)
 		for d in Dungeons.DEFS:
 			meta.floors_cleared[d] = Dungeons.DEFS[d].floors.size()
+	character = meta.selected
 	if flags.has("char") and flags.char in meta.owned:
 		character = flags.char
 	if flags.get("mode", "") == "dungeon":
@@ -74,9 +75,11 @@ func _ready() -> void:
 	ui.card_picked.connect(_on_card)
 	screens = Screens.new()
 	screens.meta = meta
+	screens.style = style
 	screens.chosen = character
 	layer.add_child(screens)
 	screens.start.connect(_on_start)
+	screens.select.connect(_on_select)
 	screens.restart.connect(_on_restart)
 	screens.next_floor.connect(_on_next)
 	screens.floors.connect(_leave_run.bind("floors"))
@@ -91,7 +94,7 @@ func _ready() -> void:
 	match flags.get("screen", ""):
 		"shop": screens.show_shop()
 		"floors": screens.show_floors()
-		"start": screens.show_start()
+		"chars": screens.show_chars()
 	if flags.has("autostart") or flags.has("bot"):
 		begin_run()
 	if flags.has("keytest"):
@@ -100,6 +103,14 @@ func _ready() -> void:
 func _on_restart() -> void:
 	_bank()
 	begin_run()
+
+## picked once on the character screen, kept for every later run
+func _on_select(c: String) -> void:
+	if not c in meta.owned:
+		return
+	character = c
+	meta.selected = c
+	_save_meta()
 
 func _on_buy(c: String) -> void:
 	var ok := meta.buy(c)
@@ -596,14 +607,24 @@ func _key_test() -> void:
 	await _wait(1.0)
 	_check("menu shown", screens.mode == "menu")
 	await _shot("menu")
-	await _tap(KEY_ENTER)
-	_check("Enter opens character select", screens.mode == "start")
+	await _tap(KEY_C)
+	_check("C opens character select", screens.mode == "chars")
 	await _tap(KEY_2)
-	_check("key 2 picks the archer", screens.chosen == "archer")
+	_check("key 2 picks the archer and keeps it", screens.chosen == "archer" and meta.selected == "archer" and meta.to_dict().selected == "archer")
+	await _wait(1.2)
 	await _shot("select")
+	await _tap(KEY_ESCAPE)
+	_check("Esc back to menu", screens.mode == "menu")
+	await _tap(KEY_ENTER)
+	_check("Enter on menu starts at once with the kept hero", started and screens.mode == "none" and world.hero.id == "archer")
+	await _tap(KEY_ESCAPE)
+	screens.menu.emit()
+	await _tap(KEY_C)
 	await _tap(KEY_1)
 	await _tap(KEY_ENTER)
-	_check("Enter starts run", started and screens.mode == "none" and world.hero.id == "knight")
+	_check("Enter on chars closes it", screens.mode == "menu" and meta.selected == "knight")
+	await _tap(KEY_ENTER)
+	_check("next run uses the knight without asking", started and screens.mode == "none" and world.hero.id == "knight")
 	var z0 := world.player.z
 	_key(KEY_W, true)
 	await _wait(1.0)
