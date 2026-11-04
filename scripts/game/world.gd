@@ -472,7 +472,8 @@ func _spawn_enemies(dt: float) -> void:
 		_spawn_acc += Monsters.spawn_rate(time) * dt
 	else:
 		_spawn_acc += (depth.rate[pz] if pz < depth.rate.size() else 0.0) * dt
-	var deficit := min_enemies - enemies.count
+	var floor_n := maxi(min_enemies, Monsters.min_alive(time)) if depth.is_empty() else min_enemies
+	var deficit := floor_n - enemies.count
 	var n := int(floor(_spawn_acc)) + maxi(0, deficit)
 	_spawn_acc -= floor(_spawn_acc)
 	if n <= 0:
