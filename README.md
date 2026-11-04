@@ -27,6 +27,9 @@ Phím: `WASD`/mũi tên di chuyển · `Space` kỹ năng · `1 2 3` chọn th�
 - `godot --headless --path . -s sim/sim.gd -- seeds=10 quests=skip|do|both skill=1 verbose=1 only=1,5`
 - `./sim/parallel.sh 50 8`: 50 seed chia 8 tiến trình (~6 phút trên M5).
 
+## Test phím thật
+- `godot --path . -- keytest god give=holySword:4,might:1`: bơm phím Enter / W / D / Space / Esc / 1, in `KEYTEST PASS|FAIL` (12 mục).
+
 ## Cờ debug (sau `--`)
 `seed=123` · `god` · `boss` (bắt đầu 7:58) · `enemies=300` · `give=fireball:5,haste:1` · `quest=bounce|hold|crystal|thief` · `hp=3` · `fps` (in FPS mỗi 5 s) · `bot` (tự chơi) · `autostart` · `shots=DIR shot_at=5,30 quit_at=40` · `shot_mode=levelUp|end`
 

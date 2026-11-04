@@ -133,6 +133,8 @@ func _button(text: String, alt: bool, cb: Callable, parent: Node) -> Button:
 	b.add_theme_stylebox_override("focus", _style(Color(0, 0, 0, 0), Color.WHITE, 12, 2))
 	for k in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
 		b.add_theme_color_override(k, INK)
+	# keyboard is handled globally: a focused button would eat Space / Enter mid-run
+	b.focus_mode = Control.FOCUS_NONE
 	b.pressed.connect(cb)
 	parent.add_child(b)
 	return b

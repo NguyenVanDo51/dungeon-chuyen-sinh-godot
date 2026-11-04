@@ -50,6 +50,8 @@ func _ready() -> void:
 	_follow(0.0, true)
 	if flags.has("autostart") or flags.has("bot"):
 		begin_run()
+	if flags.has("keytest"):
+		_key_test()
 
 func _build_scene() -> void:
 	var we := WorldEnvironment.new()
@@ -313,6 +315,8 @@ func _screenshots() -> void:
 			print("SHOT ", flags.shot_mode)
 			get_tree().quit()
 		return
+	if flags.has("keytest"):
+		return
 	if not flags.has("shots"):
 		if flags.has("quit_at") and world.time >= float(flags.quit_at):
 			get_tree().quit()
@@ -327,3 +331,73 @@ func _screenshots() -> void:
 	if (flags.has("quit_at") and world.time >= float(flags.quit_at)) or (_shot_at.is_empty() and not flags.has("quit_at")):
 		await RenderingServer.frame_post_draw
 		get_tree().quit()
+
+# ---------- keytest: real key events through the input path ----------
+
+func _key(k: Key, down: bool) -> void:
+	var e := InputEventKey.new()
+	e.physical_keycode = k
+	e.keycode = k
+	e.pressed = down
+	Input.parse_input_event(e)
+
+func _tap(k: Key) -> void:
+	_key(k, true)
+	await get_tree().process_frame
+	_key(k, false)
+	await get_tree().process_frame
+
+func _wait(s: float) -> void:
+	await get_tree().create_timer(s).timeout
+
+func _check(name: String, ok: bool) -> void:
+	printerr("KEYTEST %s %s" % ["PASS" if ok else "FAIL", name])
+
+func _shot(n: String) -> void:
+	if flags.has("shots"):
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png("%s/shot_%s.png" % [flags.shots, n])
+
+func _key_test() -> void:
+	await _wait(1.0)
+	_check("menu shown", ui.mode == "menu")
+	await _tap(KEY_ENTER)
+	_check("Enter starts run", started and ui.mode == "none")
+	var z0 := world.player.z
+	_key(KEY_W, true)
+	await _wait(1.0)
+	_key(KEY_W, false)
+	_check("W moves up (dz=%.2f)" % (world.player.z - z0), world.player.z < z0 - 2.0)
+	var x0 := world.player.x
+	_key(KEY_D, true)
+	await _wait(0.6)
+	_key(KEY_D, false)
+	_check("D moves right (dx=%.2f)" % (world.player.x - x0), world.player.x > x0 + 1.0)
+	await _tap(KEY_SPACE)
+	await _wait(0.1)
+	_check("Space casts skill (cd=%.1f)" % world.skill_cd, world.skill_cd > 0.0)
+	await _tap(KEY_ESCAPE)
+	_check("Esc pauses", ui.mode == "pause" and world.paused)
+	await _shot("pause")
+	var t0 := world.time
+	await _wait(0.5)
+	_check("paused clock frozen", world.time == t0)
+	await _tap(KEY_SPACE)
+	_check("Space in pause does nothing", ui.mode == "pause")
+	await _tap(KEY_ESCAPE)
+	_check("Esc resumes", ui.mode == "none" and not world.paused)
+	# level-up: force the 5th Thánh Kiếm level so the hidden-skill moment fires (give=holySword:4,might:1)
+	world.add_xp(Data.xp_to_next(world.level))
+	await _wait(0.1)
+	_check("level-up opens cards", ui.mode == "levelUp")
+	world.current_offers = [{ type = "upgrade", id = "holySword", to_level = 5 }]
+	ui.show_level_up(world)
+	await _wait(0.5)
+	await _tap(KEY_1)
+	_check("key 1 picks card", world.state == "playing" and world.build.level_of("holySword") == 5)
+	await _wait(0.4)
+	_check("hidden skill unlocked", world.build.hidden.has("holySword"))
+	await _shot("unlock")
+	await _wait(1.0)
+	await _shot("kiemkhi")
+	get_tree().quit()
