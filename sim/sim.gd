@@ -41,6 +41,12 @@ func _init() -> void:
 				return t / maxi(1, xs.size())
 			var reached := rs.filter(func(r: Dictionary) -> bool: return r.reached)
 			print("%s quests: win %d/%d, boss reached %d/%d, level at boss avg %.1f, quests done avg %.2f" % [tag, cnt.call("won"), rs.size(), reached.size(), rs.size(), avg.call(reached, "boss_level"), avg.call(rs, "quests")])
+			var nav := []
+			for j in 4:
+				var t := 0.0
+				for r in rs: t += r.near[j] if j < r.near.size() else 0
+				nav.append("%.1f" % (t / maxi(1, rs.size())))
+			print("%s near (14u) at 10/20/30/60s avg %s" % [tag, " ".join(nav)])
 			if args.get("mode", "") == "dungeon":
 				print("%s floor %s: boss at avg %ds" % [tag, args.get("floor", "1"), avg.call(reached, "boss_at")])
 			print("%s gold: avg %d, left on floor avg %d" % [tag, avg.call(rs, "gold"), avg.call(rs, "floor_gold")])
@@ -62,6 +68,9 @@ func _run(seed_value: int, idle: bool, c: String, do_q: bool) -> Dictionary:
 	var boss_at := -1.0
 	var boss_level := 0
 	var lv_at: Array[int] = []
+	## enemies within 14 units of the player (≈ on screen) at these times: early-game pressure
+	var near_t := [10.0, 20.0, 30.0, 60.0]
+	var near: Array[int] = []
 	while w.state == "playing" or w.state == "levelUp":
 		if w.state == "levelUp":
 			w.choose_offer(bot.pick(w.current_offers))
@@ -71,6 +80,12 @@ func _run(seed_value: int, idle: bool, c: String, do_q: bool) -> Dictionary:
 		if boss_at < 0.0 and w.boss != null:
 			boss_at = w.time
 			boss_level = w.level
+		if near.size() < near_t.size() and w.time >= near_t[near.size()]:
+			var n := 0
+			for i in w.enemies.count:
+				if Vec.hypot(w.enemies.x[i] - w.player.x, w.enemies.z[i] - w.player.z) < 14.0:
+					n += 1
+			near.append(n)
 		if w.time >= (lv_at.size() + 1) * 60.0 and lv_at.size() < 8:
 			lv_at.append(w.level)
 		w.events.clear()
@@ -90,6 +105,6 @@ func _run(seed_value: int, idle: bool, c: String, do_q: bool) -> Dictionary:
 	var floor_gold := 0.0
 	for cn in w.coins:
 		floor_gold += cn.value
-	var line := "  %s %s %s s%d: %s %.2fm lv%d kills%d %s quests%s lvByMin%s slots%s%s gold%d" % [
-		c, "do" if do_q else "skip", "idle" if idle else "kite", seed_value, w.state, w.time / 60.0, w.level, w.kills, boss_info, str(qs), str(lv_at), str(slots), budget_left, roundi(w.gold)]
-	return { won = w.state == "won", reached = boss_at >= 0.0, boss_at = boss_at, boss_level = boss_level, quests = done, gold = w.gold, floor_gold = floor_gold, line = line }
+	var line := "  %s %s %s s%d: %s %.2fm lv%d kills%d %s quests%s lvByMin%s slots%s%s gold%d near%s" % [
+		c, "do" if do_q else "skip", "idle" if idle else "kite", seed_value, w.state, w.time / 60.0, w.level, w.kills, boss_info, str(qs), str(lv_at), str(slots), budget_left, roundi(w.gold), str(near)]
+	return { won = w.state == "won", reached = boss_at >= 0.0, boss_at = boss_at, boss_level = boss_level, quests = done, gold = w.gold, floor_gold = floor_gold, line = line, near = near }

@@ -44,5 +44,14 @@ static func hp_scale(t: float) -> float:
 static func dmg_scale(t: float) -> float:
 	return 1.0 + t / 240.0
 
+## survival spawns / s. EARLY adds a boost that fades out by `fade` s, so the opening is busy and the late game is unchanged
+const EARLY := { boost = 1.5, fade = 180.0, alive_from = 14.0, alive_to = 30.0, alive_until = 90.0 }
+
 static func spawn_rate(t: float) -> float:
-	return 1.0 + 0.04 * t
+	return 1.0 + 0.04 * t + EARLY.boost * maxf(0.0, 1.0 - t / EARLY.fade)
+
+## survival: enemies kept alive at least (topped up off-screen); ramps alive_from → alive_to, then off
+static func min_alive(t: float) -> int:
+	if t >= EARLY.alive_until:
+		return 0
+	return roundi(lerpf(EARLY.alive_from, EARLY.alive_to, t / EARLY.alive_until))

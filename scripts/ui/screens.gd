@@ -1,8 +1,11 @@
 class_name Screens
 extends Control
-## menu, character select, shop, dungeon floors, pause, end (port of ui/screens.ts + menus.ts)
+## menu (start screen with the chosen hero), character select, shop, dungeon floors, pause, end
+## the hero is chosen once on its own screen and kept (Meta.selected); every run starts with it
 
 signal start(c: String, run: Dictionary)
+## an owned hero was picked on the character screen (main saves it)
+signal select(c: String)
 signal restart
 signal next_floor
 signal floors
@@ -16,14 +19,19 @@ const CYAN := Ui.CYAN
 const GOLD := Ui.GOLD
 const MINT := Ui.MINT
 const DIM := Color(1, 1, 1, 0.75)
+const INK := Ui.INK
 
-## loading | menu | floors | start | shop | pause | end | none
+## loading | menu | floors | chars | shop | pause | end | none
 var mode := "loading"
 var meta: Meta
+## the hero every run starts with (= meta.selected, always owned)
 var chosen: String = Characters.DEFAULT
-## what the character select will start: {kind = "survival"} | {kind = "dungeon", floor}
-var pending := { kind = "survival" }
+## the hero shown on the character screen (may be a locked one being looked at)
+var browsing: String = Characters.DEFAULT
 var tab := "upgrades"
+## set by main before the first screen; null = no 3D preview
+var style: Style
+var preview: HeroPreview
 var dungeon_id := "crypt"
 var _end_enter := "menu"
 var _overlay: ColorRect
@@ -45,8 +53,12 @@ static func num(x: float) -> String:
 func coin(n: float) -> String:
 	return "🪙 %d" % floori(n)
 
-## fresh panel for a screen; the old one is dropped (screens are cheap to rebuild)
+## fresh panel for a screen; the old one is dropped (screens are cheap to rebuild), the 3D preview is kept
 func _open(m: String) -> VBoxContainer:
+	if preview:
+		if preview.get_parent():
+			preview.get_parent().remove_child(preview)
+		preview.set_active(false)
 	for c in _overlay.get_children():
 		c.queue_free()
 	_box = Ui._panel(_overlay)
@@ -57,6 +69,25 @@ func _open(m: String) -> VBoxContainer:
 func hide_all() -> void:
 	mode = "none"
 	_overlay.visible = false
+	if preview:
+		preview.set_active(false)
+
+## left column of the menu / character screen: the hero turning + its name
+func _hero_column(parent: Node, id: String) -> VBoxContainer:
+	var col := VBoxContainer.new()
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 2)
+	parent.add_child(col)
+	if style and not preview:
+		preview = HeroPreview.new(style)
+	if preview:
+		col.add_child(preview)
+		preview.show_hero(Characters.DEFS[id].model)
+		preview.set_active(true)
+	var c: Dictionary = Characters.DEFS[id]
+	_center(Ui._label("%s %s" % [c.icon, c.name], 26, Color.WHITE, col))
+	_center(Ui._label(c.role, 15, CYAN, col))
+	return col
 
 func _row(parent: Node) -> HBoxContainer:
 	var hb := HBoxContainer.new()
@@ -69,10 +100,10 @@ func _center(l: Label) -> Label:
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	return l
 
-func _wrap(text: String, size: int, col: Color, parent: Node, width := 300.0) -> Label:
+func _wrap(text: String, size: int, col: Color, parent: Node, width := 0.0) -> Label:
 	var l := Ui._label(text, size, col, parent)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.custom_minimum_size.x = width
+	l.custom_minimum_size.x = width if width > 0.0 else (420.0 if mode == "chars" else 300.0)
 	return l
 
 ## clickable card; on = highlighted border, locked = dimmed
@@ -99,27 +130,52 @@ func _card(parent: Node, on: bool, locked: bool, cb: Callable, width := 320.0) -
 # ---------- main menu ----------
 
 func show_menu() -> void:
+	_fix_chosen()
 	var v := _open("menu")
 	Ui._title("Dungeon Chuyển Sinh", 56, v)
-	_center(Ui._label(coin(meta.gold) + " vàng", 18, GOLD, v))
+	var hb := _row(v)
+	hb.add_theme_constant_override("separation", 40)
+	_hero_column(hb, chosen)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 10)
-	v.add_child(col)
-	Ui._button("Sinh tồn (Enter)", false, func() -> void: show_start({ kind = "survival" }), col)
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.custom_minimum_size.x = 280
+	col.add_theme_constant_override("separation", 12)
+	hb.add_child(col)
+	_center(Ui._label(coin(meta.gold) + " vàng", 18, GOLD, col))
+	Ui._button("Sinh tồn (Enter)", false, play_survival, col)
 	Ui._button("Dungeon", false, show_floors, col)
+	Ui._button("Nhân vật (C)", true, show_chars, col)
 	Ui._button("Cửa hàng", true, show_shop, col)
+	_center(_wrap("Sống sót 8 phút trong dungeon dị giới. Làm nhiệm vụ để lên cấp nhanh, build đúng đồ để mở kỹ năng ẩn.", 13, DIM, col, 280))
+
+func play_survival() -> void:
+	_fix_chosen()
+	start.emit(chosen, { kind = "survival" })
+
+## a hero no longer owned (or a broken save) falls back to the first owned one
+func _fix_chosen() -> void:
+	if not chosen in meta.owned:
+		chosen = meta.owned[0] if meta.owned.size() > 0 else Characters.DEFAULT
 
 # ---------- character select ----------
 
+## chars screen: stacked in `parent` (a column); shop: side by side
 func _char_cards(parent: Node, on_pick: Callable) -> void:
-	var row := _row(parent)
+	var row: Node = parent if mode == "chars" else _row(parent)
 	for k in Characters.IDS.size():
 		var id: String = Characters.IDS[k]
 		var c: Dictionary = Characters.DEFS[id]
 		var owned := id in meta.owned
-		var v := _card(row, mode == "start" and id == chosen, not owned, on_pick.bind(id))
-		Ui._label(c.icon, 34, Color.WHITE, v)
-		Ui._label("%d. %s · %s" % [k + 1, c.name, c.role], 20, Color.WHITE, v)
+		var v := _card(row, mode == "chars" and id == browsing, not owned, on_pick.bind(id), 460.0 if mode == "chars" else 320.0)
+		var head := HBoxContainer.new()
+		head.add_theme_constant_override("separation", 10)
+		head.mouse_filter = MOUSE_FILTER_IGNORE
+		v.add_child(head)
+		Ui._label("%s  %d. %s · %s" % [c.icon, k + 1, c.name, c.role], 20, Color.WHITE, head)
+		if mode == "chars" and id == chosen:
+			var tag := Ui._label("ĐANG DÙNG", 11, INK, head)
+			tag.add_theme_stylebox_override("normal", Ui._style(MINT, Color(0, 0, 0, 0), 8, 0))
+			tag.size_flags_vertical = SIZE_SHRINK_CENTER
 		_wrap(c.description, 13, Color(1, 1, 1, 0.9), v)
 		_wrap("❤ %d máu · 🛡 %d%% giáp · ⚔ ×%s" % [c.hp, roundi(c.damage_reduction * 100), num(c.damage_mul)], 13, DIM, v)
 		_wrap("Vũ khí riêng: %s %s" % [Items.WEAPONS[c.weapon].icon, Items.WEAPONS[c.weapon].name], 13, GOLD, v)
@@ -133,41 +189,32 @@ func _char_cards(parent: Node, on_pick: Callable) -> void:
 			var b := Ui._button("Mua", false, buy.emit.bind(id), hb)
 			b.disabled = meta.gold < c.price
 
-func show_start(run: Dictionary = {}) -> void:
-	if not run.is_empty():
-		pending = run
-	if not chosen in meta.owned:
-		chosen = meta.owned[0] if meta.owned.size() > 0 else Characters.DEFAULT
-	var v := _open("start")
+## its own screen, reached from the menu; picking an owned hero keeps it for every later run
+func show_chars() -> void:
+	_fix_chosen()
+	if mode != "chars":
+		browsing = chosen
+	var v := _open("chars")
 	Ui._title("Chọn nhân vật", 44, v)
-	var d: Dictionary = Dungeons.DEFS[dungeon_id]
-	var sub: String = "%s — Tầng %d. Đi sâu để gặp boss; đứng yên thì quái cạn dần." % [d.name, pending.floor + 1] if pending.kind == "dungeon" \
-		else "Sống sót 8 phút trong dungeon dị giới. Làm nhiệm vụ để lên cấp nhanh, build đúng đồ để mở kỹ năng ẩn."
-	_center(_wrap(sub + "   " + coin(meta.gold), 15, Color(1, 1, 1, 0.85), v, 680))
-	_char_cards(v, pick)
 	var hb := _row(v)
-	var b := Ui._button("Bắt đầu (Enter)", false, try_start, hb)
-	b.disabled = not chosen in meta.owned
-	Ui._button("Quay lại (Esc)", true, back, hb)
-	_center(Ui._label("W A S D: di chuyển  ·  vũ khí tự bắn  ·  Space: kỹ năng  ·  1 2 3: chọn thẻ  ·  Esc: tạm dừng", 13, DIM, v))
+	hb.add_theme_constant_override("separation", 28)
+	_hero_column(hb, browsing)
+	var cards := VBoxContainer.new()
+	cards.alignment = BoxContainer.ALIGNMENT_CENTER
+	cards.add_theme_constant_override("separation", 10)
+	hb.add_child(cards)
+	_char_cards(cards, pick)
+	_center(_wrap("Chọn một lần là xong: mọi ván sau (Sinh tồn lẫn Dungeon) đều dùng nhân vật này.   " + coin(meta.gold), 13, DIM, v, 680))
+	_center_btn(v, "Xong (Enter / Esc)", show_menu)
 
+## owned: becomes the hero of every run (saved) · locked: only looked at (its card has the buy button)
 func pick(c: String) -> void:
-	chosen = c
-	if mode == "start":
-		show_start()
-
-func try_start() -> void:
-	if not chosen in meta.owned:
-		return
-	if pending.kind == "dungeon" and not meta.floor_open(dungeon_id, pending.floor):
-		return
-	start.emit(chosen, pending)
-
-func back() -> void:
-	if pending.kind == "dungeon":
-		show_floors()
-	else:
-		show_menu()
+	browsing = c
+	if c in meta.owned and c != chosen:
+		chosen = c
+		select.emit(c)
+	if mode == "chars":
+		show_chars()
 
 # ---------- shop ----------
 
@@ -224,7 +271,7 @@ func show_floors() -> void:
 	var d: Dictionary = Dungeons.DEFS[dungeon_id]
 	var v := _open("floors")
 	Ui._title(d.name, 44, v)
-	_center(_wrap("Càng vào sâu quái càng mạnh. Cuối tầng là phòng boss: bước vào là cửa khoá. Mỗi tầng chơi lại từ cấp 1.", 15, Color(1, 1, 1, 0.85), v, 680))
+	_center(_wrap("Càng vào sâu quái càng mạnh. Cuối tầng là phòng boss: bước vào là cửa khoá. Mỗi tầng chơi lại từ cấp 1. Bấm một tầng để vào ngay với %s." % Characters.DEFS[chosen].name, 15, Color(1, 1, 1, 0.85), v, 680))
 	var row := _row(v)
 	for k in d.floors.size():
 		var open := meta.floor_open(dungeon_id, k)
@@ -238,8 +285,9 @@ func show_floors() -> void:
 	_center_btn(v, "Quay lại (Esc)", show_menu)
 
 func _pick_floor(f: int) -> void:
+	_fix_chosen()
 	if meta.floor_open(dungeon_id, f):
-		show_start({ kind = "dungeon", floor = f })
+		start.emit(chosen, { kind = "dungeon", floor = f })
 
 # ---------- pause / end ----------
 
@@ -303,29 +351,29 @@ func _act(a: String) -> void:
 ## after a purchase: redraw whatever is open
 func refresh() -> void:
 	match mode:
-		"start": show_start()
+		"chars": show_chars()
 		"shop": show_shop()
 		"menu": show_menu()
 
 ## keyboard on overlays; true = handled
 func handle_key(k: Key) -> bool:
-	if mode == "start" and k >= KEY_1 and k <= KEY_9:
+	if mode == "chars" and k >= KEY_1 and k <= KEY_9:
 		var i := k - KEY_1
 		if i < Characters.IDS.size():
 			pick(Characters.IDS[i])
 		return true
+	if mode == "menu" and k == KEY_C:
+		show_chars()
+		return true
 	if k == KEY_ESCAPE:
-		if mode == "start":
-			back()
-			return true
-		if mode == "shop" or mode == "floors":
+		if mode == "shop" or mode == "floors" or mode == "chars":
 			show_menu()
 			return true
 		return false
 	if k == KEY_ENTER or k == KEY_KP_ENTER:
 		match mode:
-			"menu": show_start({ kind = "survival" })
-			"start": try_start()
+			"menu": play_survival()
+			"chars": show_menu()
 			"end": _act(_end_enter)
 			_: return false
 		return true

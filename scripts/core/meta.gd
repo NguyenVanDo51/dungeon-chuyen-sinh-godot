@@ -20,6 +20,8 @@ const PRICE_GROWTH := 1.6
 
 var gold := 0
 var owned: Array[String] = []
+## the hero every run starts with; picked once on the character screen (always one of `owned`)
+var selected: String = Characters.DEFAULT
 ## upgrade id -> level
 var upgrades := {}
 ## dungeon id -> floors beaten
@@ -33,6 +35,7 @@ static func fresh() -> Meta:
 	for c in Characters.IDS:
 		if Characters.DEFS[c].price == 0:
 			m.owned.append(c)
+	m.selected = Characters.DEFAULT if Characters.DEFAULT in m.owned else (m.owned[0] if m.owned.size() > 0 else Characters.DEFAULT)
 	for id in UPGRADE_IDS:
 		m.upgrades[id] = 0
 	for id in Dungeons.DEFS:
@@ -60,6 +63,10 @@ static func migrate(raw: Variant) -> Meta:
 		for c in ow:
 			if typeof(c) == TYPE_STRING and c in Characters.IDS and not c in m.owned:
 				m.owned.append(c)
+	# older saves have no `selected`: keep the default
+	var sel = raw.get("selected")
+	if typeof(sel) == TYPE_STRING and sel in m.owned:
+		m.selected = sel
 	var up = raw.get("upgrades")
 	if typeof(up) == TYPE_DICTIONARY:
 		for id in UPGRADE_IDS:
@@ -71,7 +78,7 @@ static func migrate(raw: Variant) -> Meta:
 	return m
 
 func to_dict() -> Dictionary:
-	return { version = VERSION, gold = gold, owned = owned, upgrades = upgrades, floorsCleared = floors_cleared }
+	return { version = VERSION, gold = gold, owned = owned, selected = selected, upgrades = upgrades, floorsCleared = floors_cleared }
 
 ## blocked storage / broken JSON fall back to a fresh meta
 static func load_from(path := SAVE_PATH) -> Meta:

@@ -11,6 +11,12 @@ const MINT := Color("#7dff9a")
 const INK := Color("#0d1030")
 const PANEL := Color("#151a46e6")
 const INPUT_LOCK := 0.3
+## event alert: seconds on screen, pop-in time, colour per kind (quest | good | bad | boss)
+const ALERT_SECONDS := 3.2
+const ALERT_POP := 0.25
+const ALERT_COLORS := { quest = CYAN, good = MINT, bad = Color("#ff5a6e"), boss = Color("#c070ff") }
+## seconds the quest box glows after a quest appears
+const QUEST_PULSE := 2.0
 
 var hud: Control
 var xp_fill: ColorRect
@@ -33,6 +39,10 @@ var minimap: Minimap
 var boss_arrow: Control
 var quest_arrow: Control
 var alert: Label
+var alert_box: PanelContainer
+var _alert_style: StyleBoxFlat
+var _quest_style: StyleBoxFlat
+var _quest_pulse := 0.0
 var banner: VBoxContainer
 var banner_name: Label
 var flash: ColorRect
@@ -186,7 +196,8 @@ func _build_hud() -> void:
 	boss_fill = _bar(boss_box, Color("#1a0f30"), Color("#b04cff"), 14)
 	# quest box
 	quest_box = PanelContainer.new()
-	quest_box.add_theme_stylebox_override("panel", _style(Color("#0b0e2acc"), Color(CYAN, 0.4), 10, 1))
+	_quest_style = _style(Color("#0b0e2acc"), Color(CYAN, 0.4), 10, 1)
+	quest_box.add_theme_stylebox_override("panel", _quest_style)
 	_at(quest_box, 1, 0, -284, 60, 270, 0)
 	quest_box.custom_minimum_size = Vector2(270, 0)
 	quest_box.mouse_filter = MOUSE_FILTER_IGNORE
@@ -250,11 +261,26 @@ func _build_hud() -> void:
 	hud.add_child(minimap)
 	boss_arrow = _edge_arrow("☠", Color("#6b3cff"))
 	quest_arrow = _edge_arrow("★", Color("#1b6f8a"))
-	alert = _label("", 38, Color("#ffd0e0"), hud)
-	_at(alert, 0.5, 0, -500, 180, 1000, 60)
+	# alert: dark plate + coloured border + outlined text so it reads over any floor
+	var band := CenterContainer.new()
+	band.anchor_right = 1.0
+	band.offset_top = 130
+	band.offset_bottom = 230
+	band.mouse_filter = MOUSE_FILTER_IGNORE
+	hud.add_child(band)
+	alert_box = PanelContainer.new()
+	alert_box.mouse_filter = MOUSE_FILTER_IGNORE
+	_alert_style = _style(Color("#070920e6"), CYAN, 16, 3)
+	_alert_style.content_margin_left = 34; _alert_style.content_margin_right = 34
+	_alert_style.content_margin_top = 10; _alert_style.content_margin_bottom = 12
+	_alert_style.shadow_size = 28
+	alert_box.add_theme_stylebox_override("panel", _alert_style)
+	alert_box.modulate.a = 0
+	band.add_child(alert_box)
+	alert = _label("", 42, Color.WHITE, alert_box)
 	alert.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	alert.add_theme_color_override("font_shadow_color", Color("#ff4d6d"))
-	alert.modulate.a = 0
+	alert.add_theme_constant_override("outline_size", 10)
+	alert.add_theme_color_override("font_outline_color", Color("#05061a"))
 	banner = VBoxContainer.new()
 	_at(banner, 0.5, 0, -400, 240, 800, 120)
 	banner.pivot_offset = Vector2(400, 60)
@@ -272,17 +298,17 @@ func _edge_arrow(icon: String, col: Color) -> Control:
 	a.mouse_filter = MOUSE_FILTER_IGNORE
 	hud.add_child(a)
 	var tip := Polygon2D.new()
-	tip.polygon = PackedVector2Array([Vector2(10, -8), Vector2(24, 0), Vector2(10, 8)])
+	tip.polygon = PackedVector2Array([Vector2(16, -11), Vector2(34, 0), Vector2(16, 11)])
 	tip.color = PINK
 	a.add_child(tip)
 	var disc := Panel.new()
-	disc.position = Vector2(-14, -14)
-	disc.size = Vector2(28, 28)
-	disc.add_theme_stylebox_override("panel", _style(Color(col, 0.85), Color(col.lightened(0.4), 0.8), 14, 1))
+	disc.position = Vector2(-20, -20)
+	disc.size = Vector2(40, 40)
+	disc.add_theme_stylebox_override("panel", _style(Color(col, 0.9), Color(col.lightened(0.5), 1.0), 20, 2))
 	disc.mouse_filter = MOUSE_FILTER_IGNORE
-	disc.pivot_offset = Vector2(14, 14)
+	disc.pivot_offset = Vector2(20, 20)
 	a.add_child(disc)
-	var l := _label(icon, 16, Color.WHITE, disc)
+	var l := _label(icon, 22, Color.WHITE, disc)
 	l.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -342,6 +368,9 @@ func hide_all() -> void:
 func show_hud(on: bool) -> void:
 	hud.visible = on
 	_hurt_t = 0.0
+	_alert_t = 0.0
+	_quest_pulse = 0.0
+	alert_box.modulate.a = 0.0
 	(vignette.material as ShaderMaterial).set_shader_parameter("amount", 0.0)
 	if on:
 		_slots_key = ""
@@ -466,9 +495,16 @@ static func fmt_time(t: float) -> String:
 	var s := int(floor(t))
 	return "%02d:%02d" % [s / 60, s % 60]
 
-func play_alert(text: String) -> void:
+## kind: quest | good | bad | boss (ALERT_COLORS)
+func play_alert(text: String, kind := "quest") -> void:
+	var col: Color = ALERT_COLORS.get(kind, CYAN)
 	alert.text = text
-	_alert_t = 2.4
+	alert.add_theme_color_override("font_color", col.lerp(Color.WHITE, 0.35))
+	_alert_style.border_color = col
+	_alert_style.shadow_color = Color(col, 0.45)
+	_alert_t = ALERT_SECONDS
+	if kind == "quest":
+		_quest_pulse = QUEST_PULSE
 
 func play_unlock(id: String) -> void:
 	banner_name.text = Items.WEAPONS[id].hidden_name
@@ -526,8 +562,23 @@ func update_hud(w: World, cam: Camera3D, dt: float) -> void:
 		qt = Vector3(t.x, 1, t.y)
 	_point_arrow(quest_arrow, cam, qt)
 	if _alert_t > 0.0:
-		_alert_t -= dt
-		alert.modulate.a = clampf(minf(_alert_t / 0.4, (2.4 - _alert_t) / 0.2), 0.0, 1.0)
+		_alert_t = maxf(0.0, _alert_t - dt)
+		var age := ALERT_SECONDS - _alert_t
+		alert_box.modulate.a = clampf(minf(_alert_t / 0.5, age / 0.12), 0.0, 1.0)
+		alert_box.pivot_offset = alert_box.size / 2.0
+		# pop in big, settle, then breathe a little while it holds
+		var pop := maxf(0.0, 1.0 - age / ALERT_POP)
+		alert_box.scale = Vector2.ONE * (1.0 + 0.35 * pop * pop + 0.03 * sin(age * 6.0))
+	# new quest: the quest box border glows and pulses for a moment
+	_quest_pulse = maxf(0.0, _quest_pulse - dt)
+	var qp := _quest_pulse / QUEST_PULSE
+	var wave := 0.5 + 0.5 * sin(w.time * 10.0)
+	_quest_style.border_color = Color(CYAN, 0.4 + 0.6 * qp * wave)
+	_quest_style.set_border_width_all(1 + roundi(2.0 * qp))
+	_quest_style.shadow_color = Color(CYAN, 0.5 * qp)
+	_quest_style.shadow_size = roundi(18.0 * qp)
+	if quest_arrow.visible:
+		quest_arrow.get_child(1).scale = Vector2.ONE * (1.0 + 0.12 * sin(Time.get_ticks_msec() / 160.0))
 	if _banner_t > 0.0:
 		_banner_t -= dt
 		banner.modulate.a = clampf(minf(_banner_t / 0.5, (2.4 - _banner_t) / 0.2), 0.0, 1.0)
