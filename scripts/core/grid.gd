@@ -81,7 +81,7 @@ func walkable_at(x: float, z: float) -> bool:
 
 ## samples the segment every 0.5 units; walls and pillars block sight
 func line_of_sight(x0: float, z0: float, x1: float, z1: float) -> bool:
-	var d := sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0))
+	var d := Vec.hypot(x1 - x0, z1 - z0)
 	var steps := int(ceil(d / 0.5))
 	for i in range(1, steps):
 		var t := float(i) / steps

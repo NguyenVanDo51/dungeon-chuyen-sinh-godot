@@ -1,11 +1,7 @@
 class_name Ui
 extends Control
-## HUD, level-up cards, menu / pause / end screens, minimap, edge arrows, alerts, damage numbers
+## HUD, level-up cards, minimap, edge arrows, alerts, damage numbers (menus: Screens)
 
-signal start_pressed
-signal resume_pressed
-signal restart_pressed
-signal menu_pressed
 signal card_picked(i: int)
 
 const PINK := Color("#ff8fd8")
@@ -19,11 +15,13 @@ const INPUT_LOCK := 0.3
 var hud: Control
 var xp_fill: ColorRect
 var lvl: Label
+var gold_label: Label
 var timer: Label
 var hp_fill: ColorRect
 var slots_box: HBoxContainer
 var skill_box: Panel
 var skill_cd: ColorRect
+var skill_icon: Label
 var boss_box: VBoxContainer
 var boss_name: Label
 var boss_fill: ColorRect
@@ -42,15 +40,10 @@ var dmg_layer: Control
 var _dmg: Array = []  # {label, x, z, t, life}
 
 var overlay: ColorRect
-var menu_panel: PanelContainer
-var pause_panel: PanelContainer
-var end_panel: PanelContainer
-var end_title: Label
-var end_stats: Label
-var end_build: HBoxContainer
 var lu_panel: PanelContainer
 var cards_box: HBoxContainer
-var mode := "menu"
+## levelUp | none
+var mode := "none"
 var _lu_shown_at := 0.0
 var _lu_count := 0
 var _slots_key := ""
@@ -74,7 +67,8 @@ func _ready() -> void:
 	flash.mouse_filter = MOUSE_FILTER_IGNORE
 	add_child(flash)
 	_build_overlays()
-	show_menu()
+	hud.visible = false
+	_show_only(null)
 
 # ---------- builders ----------
 
@@ -87,7 +81,7 @@ static func _style(bg: Color, border: Color, radius := 14, bw := 2) -> StyleBoxF
 	s.content_margin_left = 12; s.content_margin_right = 12; s.content_margin_top = 8; s.content_margin_bottom = 8
 	return s
 
-func _label(text: String, size := 16, color := Color.WHITE, parent: Node = null) -> Label:
+static func _label(text: String, size := 16, color := Color.WHITE, parent: Node = null) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", size)
@@ -99,7 +93,7 @@ func _label(text: String, size := 16, color := Color.WHITE, parent: Node = null)
 		parent.add_child(l)
 	return l
 
-func _bar(parent: Control, bg: Color, fg: Color, h: float) -> ColorRect:
+static func _bar(parent: Control, bg: Color, fg: Color, h: float) -> ColorRect:
 	var back := ColorRect.new()
 	back.color = bg
 	back.custom_minimum_size.y = h
@@ -118,11 +112,11 @@ static func _at(c: Control, ax: float, ay: float, x: float, y: float, w: float, 
 	c.anchor_left = ax; c.anchor_right = ax; c.anchor_top = ay; c.anchor_bottom = ay
 	c.offset_left = x; c.offset_top = y; c.offset_right = x + w; c.offset_bottom = y + h
 
-func _set_fill(fill: ColorRect, k: float) -> void:
+static func _set_fill(fill: ColorRect, k: float) -> void:
 	fill.anchor_right = clampf(k, 0.0, 1.0)
 	fill.offset_right = 0
 
-func _button(text: String, alt: bool, cb: Callable, parent: Node) -> Button:
+static func _button(text: String, alt: bool, cb: Callable, parent: Node) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.add_theme_font_size_override("font_size", 18)
@@ -153,6 +147,8 @@ func _build_hud() -> void:
 	lvl = _label("Lv 1", 22, GOLD, hud)
 	_at(lvl, 1, 0, -110, 16, 92, 30)
 	lvl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	gold_label = _label("🪙 0", 20, GOLD, hud)
+	_at(gold_label, 0, 0, 18, 18, 160, 30)
 	timer = _label("00:00", 30, Color.WHITE, hud)
 	_at(timer, 0.5, 0, -80, 14, 160, 36)
 	timer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -210,9 +206,9 @@ func _build_hud() -> void:
 	skill_box.clip_contents = true
 	skill_box.mouse_filter = MOUSE_FILTER_IGNORE
 	row.add_child(skill_box)
-	var sic := _label(Data.SKILL.icon, 26, Color.WHITE, skill_box)
-	_at(sic, 0, 0, 0, 4, 64, 36)
-	sic.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	skill_icon = _label("", 26, Color.WHITE, skill_box)
+	_at(skill_icon, 0, 0, 0, 4, 64, 36)
+	skill_icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var kbd := _label("Space", 10, Color(1, 1, 1, 0.8), skill_box)
 	_at(kbd, 0, 0, 0, 46, 64, 14)
 	kbd.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -270,7 +266,7 @@ func _edge_arrow(icon: String, col: Color) -> Control:
 	a.visible = false
 	return a
 
-func _panel(parent: Control) -> VBoxContainer:
+static func _panel(parent: Control) -> VBoxContainer:
 	var c := CenterContainer.new()
 	c.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	c.mouse_filter = MOUSE_FILTER_IGNORE
@@ -288,7 +284,7 @@ func _panel(parent: Control) -> VBoxContainer:
 	p.add_child(v)
 	return v
 
-func _title(text: String, size: int, parent: Node) -> Label:
+static func _title(text: String, size: int, parent: Node) -> Label:
 	var t := _label(text, size, PINK, parent)
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	t.add_theme_color_override("font_shadow_color", Color(PINK, 0.4))
@@ -300,55 +296,6 @@ func _build_overlays() -> void:
 	overlay.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
 	overlay.color = Color("#070920b8")
 	add_child(overlay)
-	# menu
-	var mv := _panel(overlay)
-	menu_panel = mv.get_parent()
-	_title("Dungeon Chuyển Sinh", 56, mv)
-	var sub := _label("Sinh tồn 8 phút · hạ Lich để thắng", 17, Color(1, 1, 1, 0.85), mv)
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var card := PanelContainer.new()
-	card.add_theme_stylebox_override("panel", _style(Color(CYAN, 0.08), CYAN, 14, 2))
-	mv.add_child(card)
-	var cv := VBoxContainer.new()
-	card.add_child(cv)
-	var K := Data.KNIGHT
-	_label("%s %s · %s" % [K.icon, K.name, K.role], 26, Color.WHITE, cv)
-	_label(K.description, 14, Color(1, 1, 1, 0.9), cv)
-	_label("%d máu · giảm %d%% sát thương nhận · sát thương ×%.2f" % [K.hp, K.damage_reduction * 100, K.damage_mul], 14, Color(1, 1, 1, 0.8), cv)
-	_label("Vũ khí: %s %s" % [Data.WEAPONS.holySword.icon, Data.WEAPONS.holySword.name], 14, GOLD, cv)
-	_label(K.passive_text, 14, MINT, cv)
-	_label("Kỹ năng %s %s (Space): %s" % [Data.SKILL.icon, Data.SKILL.name, Data.SKILL.description], 14, CYAN, cv)
-	var hb := HBoxContainer.new()
-	hb.alignment = BoxContainer.ALIGNMENT_CENTER
-	mv.add_child(hb)
-	_button("Bắt đầu (Enter)", false, func() -> void: start_pressed.emit(), hb)
-	var keys := _label("W A S D: di chuyển   ·   vũ khí tự bắn   ·   Space: kỹ năng   ·   1 2 3: chọn thẻ   ·   Esc: tạm dừng", 14, Color(1, 1, 1, 0.75), mv)
-	keys.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	# pause
-	var pv := _panel(overlay)
-	pause_panel = pv.get_parent()
-	_title("Tạm dừng", 44, pv)
-	var pb := HBoxContainer.new()
-	pb.alignment = BoxContainer.ALIGNMENT_CENTER
-	pv.add_child(pb)
-	_button("Tiếp tục (Esc)", false, func() -> void: resume_pressed.emit(), pb)
-	_button("Chơi lại", true, func() -> void: restart_pressed.emit(), pb)
-	_button("Về menu", true, func() -> void: menu_pressed.emit(), pb)
-	# end
-	var ev := _panel(overlay)
-	end_panel = ev.get_parent()
-	end_title = _title("", 52, ev)
-	end_stats = _label("", 20, CYAN, ev)
-	end_stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	end_build = HBoxContainer.new()
-	end_build.alignment = BoxContainer.ALIGNMENT_CENTER
-	end_build.add_theme_constant_override("separation", 8)
-	ev.add_child(end_build)
-	var eb := HBoxContainer.new()
-	eb.alignment = BoxContainer.ALIGNMENT_CENTER
-	ev.add_child(eb)
-	_button("Chơi lại (Enter)", false, func() -> void: restart_pressed.emit(), eb)
-	_button("Về menu", true, func() -> void: menu_pressed.emit(), eb)
 	# level-up
 	var lv := _panel(overlay)
 	lu_panel = lv.get_parent()
@@ -363,41 +310,18 @@ func _build_overlays() -> void:
 
 func _show_only(p: Control) -> void:
 	overlay.visible = p != null
-	for x in [menu_panel, pause_panel, end_panel, lu_panel]:
-		x.get_parent().visible = x == p
-
-func show_menu() -> void:
-	mode = "menu"
-	hud.visible = false
-	_show_only(menu_panel)
-
-func show_pause() -> void:
-	mode = "pause"
-	_show_only(pause_panel)
+	lu_panel.get_parent().visible = p == lu_panel
 
 func hide_all() -> void:
 	mode = "none"
 	_show_only(null)
 
-func show_game() -> void:
-	hide_all()
-	hud.visible = true
-	_slots_key = ""
-	for d in _dmg:
-		d.label.visible = false
-
-func show_end(w: World) -> void:
-	mode = "end"
-	hud.visible = false
-	var won := w.state == "won"
-	end_title.text = "Chiến thắng!" if won else "Thất bại"
-	end_title.add_theme_color_override("font_color", PINK if won else Color("#ff6b8a"))
-	var qd := 0
-	for q in w.quest_log:
-		qd += 1 if q.success else 0
-	end_stats.text = "%s thời gian   ·   cấp %d   ·   %d quái hạ   ·   %d kỹ năng ẩn   ·   %d/%d nhiệm vụ" % [fmt_time(w.time), w.level, w.kills, w.build.hidden.size(), qd, w.quests.size()]
-	_fill_slots(end_build, w.build)
-	_show_only(end_panel)
+func show_hud(on: bool) -> void:
+	hud.visible = on
+	if on:
+		_slots_key = ""
+		for d in _dmg:
+			d.label.visible = false
 
 func show_level_up(w: World) -> void:
 	mode = "levelUp"
@@ -417,7 +341,7 @@ func pick_card(i: int) -> void:
 func _card(o: Dictionary, w: World, idx: int) -> Control:
 	var p := PanelContainer.new()
 	p.custom_minimum_size = Vector2(230, 250)
-	var is_stat: bool = o.type != "heal" and not Data.is_weapon(o.id)
+	var is_stat: bool = o.type != "heal" and not Items.is_weapon(o.id)
 	var border := GOLD if is_stat else CYAN
 	var st := _style(Color("#1b2160"), Color(border, 0.35), 18, 2)
 	st.content_margin_left = 16; st.content_margin_right = 16; st.content_margin_top = 14
@@ -441,22 +365,22 @@ func _card(o: Dictionary, w: World, idx: int) -> Control:
 		_label("Hồi máu", 22, Color.WHITE, v)
 		add_wrap.call("Hồi %d máu." % Data.BALANCE.heal_amount, 14, Color(1, 1, 1, 0.9))
 		return p
-	var def := Data.item_def(o.id)
+	var def := Items.def(o.id)
 	_label(def.icon, 40, Color.WHITE, v)
 	_label(def.name, 22, Color.WHITE, v)
 	var badge := _label("MỚI" if o.type == "new" else "Cấp %d → %d" % [o.to_level - 1, o.to_level], 12, INK, v)
 	badge.add_theme_stylebox_override("normal", _style(MINT if o.type == "new" else CYAN, Color(0, 0, 0, 0), 8, 0))
 	badge.size_flags_horizontal = SIZE_SHRINK_BEGIN
 	add_wrap.call(def.description, 14, Color(1, 1, 1, 0.9))
-	if Data.is_weapon(o.id):
-		add_wrap.call("Cần: %s" % Data.STATS[def.paired].name, 13, GOLD)
+	if Items.is_weapon(o.id):
+		add_wrap.call("Cần: %s" % Items.STATS[def.paired].name, 13, GOLD)
 		if o.type == "upgrade" and o.to_level == Build.MAX_LEVEL and w.build.has(def.paired):
 			add_wrap.call("⚡ Mở kỹ năng ẩn: %s" % def.hidden_name, 13, Color.WHITE)
 	else:
 		var powers := []
 		var awakens := []
-		for id in Data.WEAPONS:
-			var wd: Dictionary = Data.WEAPONS[id]
+		for id in Items.WEAPONS:
+			var wd: Dictionary = Items.WEAPONS[id]
 			if wd.paired == o.id:
 				powers.append(wd.name)
 				if w.build.level_of(id) == Build.MAX_LEVEL and not w.build.hidden.has(id):
@@ -467,14 +391,14 @@ func _card(o: Dictionary, w: World, idx: int) -> Control:
 			add_wrap.call("⚡ Mở ngay: %s" % ", ".join(awakens), 13, Color.WHITE)
 	return p
 
-func _slot(s: Variant, b: Build) -> Panel:
+static func _slot(s: Variant, b: Build) -> Panel:
 	var p := Panel.new()
 	p.custom_minimum_size = Vector2(64, 64)
 	p.mouse_filter = MOUSE_FILTER_IGNORE
 	if s == null:
 		p.add_theme_stylebox_override("panel", _style(Color("#1c225066"), Color(1, 1, 1, 0.13), 14, 2))
 		return p
-	var weapon := Data.is_weapon(s.id)
+	var weapon := Items.is_weapon(s.id)
 	var awake: bool = weapon and b.hidden.has(s.id)
 	var col := CYAN if weapon else GOLD
 	var st := _style(Color("#1c2250cc"), GOLD if awake else Color(col, 0.35), 14, 2)
@@ -482,7 +406,7 @@ func _slot(s: Variant, b: Build) -> Panel:
 		st.shadow_color = Color(GOLD, 0.6)
 		st.shadow_size = 10
 	p.add_theme_stylebox_override("panel", st)
-	var def := Data.item_def(s.id)
+	var def := Items.def(s.id)
 	var ic := _label(def.icon, 24, Color.WHITE, p)
 	ic.set_anchors_preset(PRESET_CENTER_TOP)
 	ic.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -505,7 +429,7 @@ func _slot(s: Variant, b: Build) -> Panel:
 		star.position = Vector2(50, -12)
 	return p
 
-func _fill_slots(box: HBoxContainer, b: Build) -> void:
+static func _fill_slots(box: HBoxContainer, b: Build) -> void:
 	for c in box.get_children():
 		c.queue_free()
 	for i in Build.MAX_SLOTS:
@@ -522,21 +446,28 @@ func play_alert(text: String) -> void:
 	_alert_t = 2.4
 
 func play_unlock(id: String) -> void:
-	banner_name.text = Data.WEAPONS[id].hidden_name
+	banner_name.text = Items.WEAPONS[id].hidden_name
 	_banner_t = 2.4
 	flash.color.a = 0.35
 
 func update_hud(w: World, cam: Camera3D, dt: float) -> void:
 	_set_fill(xp_fill, w.xp / Data.xp_to_next(w.level))
 	lvl.text = "Lv %d" % w.level
-	timer.text = fmt_time(w.time)
+	gold_label.text = "🪙 %d" % floori(w.gold)
+	# dungeon before the boss: count down to the pull; dungeon fight: the fight clock; survival: the run clock
+	var room: bool = w.rules.boss == "enterRoom"
+	var left := maxf(0.0, w.boss_time() - w.time) if room and w.boss == null and not w.boss_defeated else -1.0
+	var shown := ceilf(left) if left >= 0.0 else (w.boss.age if room and w.boss != null else w.time)
+	timer.text = fmt_time(shown)
+	timer.add_theme_color_override("font_color", Color("#ff6b8a") if left >= 0.0 and ceili(left) <= 30 else Color.WHITE)
+	skill_icon.text = w.skill_def.icon
 	_set_fill(hp_fill, w.player.hp / w.player.max_hp)
 	hp_fill.anchor_right = clampf(w.player.hp / w.player.max_hp, 0.0, 1.0)
 	var bi := w.boss_index()
 	boss_box.visible = bi >= 0
 	if bi >= 0:
-		_set_fill(boss_fill, w.enemies.hp[bi] / Data.LICH.hp)
-		boss_name.text = "LICH" + ("   CUỒNG NỘ!" if w.boss.enraged and int(w.time * 4) % 2 == 0 else ("   " if w.boss.enraged else ""))
+		_set_fill(boss_fill, w.enemies.hp[bi] / w.boss.max_hp)
+		boss_name.text = String(w.boss_def.name).to_upper() + ("   CUỒNG NỘ!" if w.boss.enraged and int(w.time * 4) % 2 == 0 else ("   " if w.boss.enraged else ""))
 	var k := w.skill_cd / w.skill_cd_max
 	skill_cd.anchor_top = 1.0 - k
 	skill_cd.offset_top = 0

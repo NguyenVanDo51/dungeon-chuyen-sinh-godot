@@ -1,5 +1,5 @@
 class_name Gfx
-## shared palette, glow materials, procedural meshes, GLB helpers
+## glow materials, procedural meshes, GLB helpers; UI palette (3D colours come from the style)
 
 const BG := Color("#0d1030")
 const PINK := Color("#ff8fd8")
@@ -10,9 +10,9 @@ const MINT := Color("#7dff9a")
 ## glow strengths (values >1 push a material over the bloom threshold); lowered after "chói mắt"
 const GLOW := {
 	torch = 5.0, rune = 1.1, rune_opacity = 0.45, halo = 1.0, halo_opacity = 0.22, gem = 0.95,
-	fireball = 1.9, sword_wave = 1.7, meteor_warn = 1.3, meteor = 2.2, spark = 1.5,
+	arrow = 1.6, fireball = 1.9, sword_wave = 1.7, sword_glow = 1.2, sword_glow_opacity = 0.4, meteor_warn = 1.3, meteor = 2.2, spark = 1.5,
 	slash = 1.6, explode = 1.8, unlock = 1.6, bolt = 1.3, frost = 0.9, frost_aura_opacity = 0.05,
-	ice_shard = 1.1, shield = 1.4, boss_shot = 1.8, zone = 1.3,
+	ice_shard = 1.1, shield = 1.4, beam = 1.6, vortex = 1.4, boss_shot = 1.8, zone = 1.3,
 }
 
 static func glow_mat(c: Color, k: float, opacity := 1.0, no_depth_test := false, double_sided := true) -> StandardMaterial3D:

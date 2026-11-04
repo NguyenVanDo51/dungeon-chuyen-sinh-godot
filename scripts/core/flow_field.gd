@@ -53,14 +53,20 @@ static func make(g: Grid, tcx: int, tcz: int) -> FlowField:
 	f.compute(g, tcx, tcz)
 	return f
 
-func direction(g: Grid, x: float, z: float) -> Vector2:
+## unit step toward the target in ox / oz (0, 0 = at target / unreachable)
+static var ox := 0.0
+static var oz := 0.0
+
+func direction(g: Grid, x: float, z: float) -> void:
+	ox = 0.0
+	oz = 0.0
 	var cx := int(floor(x / Grid.CELL))
 	var cz := int(floor(z / Grid.CELL))
 	if cx < 0 or cz < 0 or cx >= g.w or cz >= g.h:
-		return Vector2.ZERO
+		return
 	var here := dist[cz * g.w + cx]
 	if here <= 0:
-		return Vector2.ZERO
+		return
 	var best := here
 	var bx := 0
 	var bz := 0
@@ -72,5 +78,7 @@ func direction(g: Grid, x: float, z: float) -> Vector2:
 			best = d
 			bx = dv.x
 			bz = dv.y
-	var v := Vector2(bx, bz)
-	return v.normalized() if v != Vector2.ZERO else Vector2.ZERO
+	var l := Vec.hypot(bx, bz)
+	if l > 0.0:
+		ox = bx / l
+		oz = bz / l

@@ -1,7 +1,10 @@
 class_name Collision
-## circle vs blocked grid cells
+## circle vs blocked grid cells; result in rx / rz (float64: Vector2 would round to float32)
 
-static func resolve(g: Grid, x: float, z: float, r: float) -> Vector2:
+static var rx := 0.0
+static var rz := 0.0
+
+static func resolve(g: Grid, x: float, z: float, r: float) -> void:
 	var px := x
 	var pz := z
 	var C := Grid.CELL
@@ -40,4 +43,5 @@ static func resolve(g: Grid, x: float, z: float, r: float) -> Vector2:
 					elif m == right: px = max_x + r
 					elif m == top: pz = min_z - r
 					else: pz = max_z + r
-	return Vector2(px, pz)
+	rx = px
+	rz = pz

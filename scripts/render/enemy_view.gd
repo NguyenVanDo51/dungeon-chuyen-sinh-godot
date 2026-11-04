@@ -24,38 +24,141 @@ void fragment() {
 }
 """
 
-## [type] -> {mi: MultiMeshInstance3D, scale}
+## baked poses per second of on-screen animation (8 frames/loop looked choppy: ~10-14 fps)
+const ANIM_FPS := 30.0
+
+## [type] -> {frames: Array[MultiMeshInstance3D], n: Array[int], scale, rate, len, animated}
 var _views := {}
 
-func build(host: Node) -> void:
+## one view per Monsters type that the style has a skin for (no skin = not drawn)
+func build(host: Node, style: Style) -> void:
 	var shader := Shader.new()
 	shader.code = SHADER
-	var minion := Gfx.load_glb("characters/Skeleton_Minion.glb")
-	var warrior := Gfx.load_glb("characters/Skeleton_Warrior.glb")
-	var mtex := _first_texture(minion)
-	var wtex := _first_texture(warrior)
-	var mk := func(tex: Texture2D, tint: Color, em: Color, energy: float) -> ShaderMaterial:
-		var m := ShaderMaterial.new()
-		m.shader = shader
-		m.set_shader_parameter("albedo_tex", tex)
-		m.set_shader_parameter("use_tex", tex != null)
-		m.set_shader_parameter("tint", tint)
-		m.set_shader_parameter("emissive", em)
-		m.set_shader_parameter("emissive_energy", energy)
-		return m
 	var cap: int = Data.BALANCE.max_enemies
-	# goblin placeholder: minion tinted + glowing green; thief violet so it never reads as a gold elite
-	_add(Data.T_SLIME, _slime_mesh(), mk.call(null, Color.WHITE, Color("#2a8f6a"), 0.35), 0.8, cap, host)
-	_add(Data.T_SKELETON, bake_pose(host, minion, "Running_A", 0.25), mk.call(mtex, Color.WHITE, Color.BLACK, 0.0), 0.8, cap, host)
-	_add(Data.T_GOBLIN, bake_pose(host, minion, "Running_B", 0.1), mk.call(mtex, Color("#a6ff8a"), Color("#2f9e3a"), 0.55), 0.66, cap, host)
-	_add(Data.T_WARRIOR, bake_pose(host, warrior, "Running_A", 0.25), mk.call(wtex, Color.WHITE, Color("#3a4f9e"), 0.3), 0.95, cap, host)
-	_add(Data.T_THIEF, bake_pose(host, minion, "Running_B", 0.1), mk.call(mtex, Color("#d9a6ff"), Color("#7a3cc8"), 0.6), 0.6, 8, host)
+	for t in Monsters.DEFS.size():
+		var sk := style.monster(Monsters.DEFS[t].id)
+		if sk == null:
+			continue
+		var c := sk.max_instances if sk.max_instances > 0 else cap
+		if sk.kind == "slime":
+			_add(t, [_slime_mesh()], _mat(shader, null, sk), sk.scale, 1.0, 1.0, c)
+			continue
+		var scene := load(sk.model) as PackedScene
+		if scene == null:
+			push_error("monster %s: model not found %s" % [sk.id, sk.model])
+			continue
+		_add_anim(host, t, scene, sk.clip, _mat(shader, _first_texture(scene), sk), sk.scale, sk.height, sk.anim_rate, c)
 
-func _add(t: int, mesh: Mesh, mat: Material, s: float, cap: int, _host: Node) -> void:
-	var mi := Gfx.multi(mesh, mat, cap, false, true)
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	add_child(mi)
-	_views[t] = { mi = mi, scale = s, n = 0 }
+static func _mat(shader: Shader, tex: Texture2D, sk: MonsterSkin) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = shader
+	m.set_shader_parameter("albedo_tex", tex)
+	m.set_shader_parameter("use_tex", tex != null)
+	m.set_shader_parameter("tint", sk.tint)
+	m.set_shader_parameter("emissive", sk.emissive)
+	m.set_shader_parameter("emissive_energy", sk.emissive_energy)
+	return m
+
+## height > 0 = normalise the baked pose to that world height, else fixed scale
+func _add_anim(host: Node, t: int, scene: PackedScene, clip: String, mat: Material, scale: float, height: float, rate: float, cap: int) -> void:
+	var probe := scene.instantiate()
+	var player := probe.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	var anim: Animation = player.get_animation(clip) if player and player.has_animation(clip) else null
+	probe.free()
+	if anim == null:
+		push_error("monster %s: clip '%s' not found" % [Monsters.DEFS[t].id, clip])
+		return
+	var n := clampi(ceili(ANIM_FPS * anim.length / rate), 8, 48)
+	var baked := bake_frames(host, scene, clip, n)
+	var meshes: Array = baked.meshes
+	var s := scale
+	if height > 0.0:
+		s = height / maxf(0.01, (meshes[0] as Mesh).get_aabb().size.y)
+	_add(t, meshes, mat, s, rate, baked.length, cap)
+
+func _add(t: int, meshes: Array, mat: Material, s: float, rate: float, clip_len: float, cap: int) -> void:
+	var frames: Array[MultiMeshInstance3D] = []
+	var counts: Array[int] = []
+	for m in meshes:
+		var mi := Gfx.multi(m, mat, cap, false, true)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		add_child(mi)
+		frames.append(mi)
+		counts.append(0)
+	_views[t] = { frames = frames, n = counts, scale = s, rate = rate, len = clip_len, animated = meshes.size() > 1 }
+
+## FRAMES evenly spaced poses of a looping clip
+static func bake_frames(host: Node, scene: PackedScene, clip: String, n: int) -> Dictionary:
+	var root: Node3D = scene.instantiate()
+	root.visible = false
+	host.add_child(root)
+	var ap: AnimationPlayer = root.find_child("AnimationPlayer", true, false)
+	var length := ap.get_animation(clip).length
+	var out := []
+	for k in n:
+		out.append(_bake_at(root, ap, clip, length * k / n))
+	root.queue_free()
+	return { meshes = out, length = length }
+
+static func _bake_at(root: Node3D, ap: AnimationPlayer, clip: String, t: float) -> ArrayMesh:
+	ap.play(clip)
+	ap.seek(t, true)
+	ap.advance(0)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var root_inv := root.global_transform.affine_inverse()
+	for nd in root.find_children("*", "MeshInstance3D", true, false):
+		var mi := nd as MeshInstance3D
+		if not mi.visible:
+			continue
+		if mi.skin == null:
+			for s in mi.mesh.get_surface_count():
+				st.append_from(mi.mesh, s, root_inv * mi.global_transform)
+			continue
+		var skel := mi.get_node(mi.skeleton) as Skeleton3D
+		var tmp := _skin_cpu(mi.mesh, mi.skin, skel)
+		for s in tmp.get_surface_count():
+			st.append_from(tmp, s, root_inv * skel.global_transform)
+	st.generate_normals()
+	return st.commit()
+
+## CPU linear-blend skinning of the skeleton's current pose (no renderer needed); result in skeleton space
+static func _skin_cpu(mesh: Mesh, skin: Skin, skel: Skeleton3D) -> ArrayMesh:
+	var mats: Array[Transform3D] = []
+	for b in skin.get_bind_count():
+		var bone := skin.get_bind_bone(b)
+		if bone < 0:
+			bone = skel.find_bone(skin.get_bind_name(b))
+		mats.append(skel.get_bone_global_pose(bone) * skin.get_bind_pose(b))
+	var out := ArrayMesh.new()
+	for s in mesh.get_surface_count():
+		var arr := mesh.surface_get_arrays(s)
+		var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var bones = arr[Mesh.ARRAY_BONES]
+		var weights: PackedFloat32Array = arr[Mesh.ARRAY_WEIGHTS]
+		var per := weights.size() / maxi(1, verts.size())
+		var nv := PackedVector3Array()
+		nv.resize(verts.size())
+		for i in verts.size():
+			var v := verts[i]
+			var acc := Vector3.ZERO
+			var wsum := 0.0
+			for k in per:
+				var w := weights[i * per + k]
+				if w <= 0.0:
+					continue
+				acc += (mats[int(bones[i * per + k])] * v) * w
+				wsum += w
+			nv[i] = acc / wsum if wsum > 0.0 else v
+		var na := []
+		na.resize(Mesh.ARRAY_MAX)
+		na[Mesh.ARRAY_VERTEX] = nv
+		na[Mesh.ARRAY_TEX_UV] = arr[Mesh.ARRAY_TEX_UV]
+		na[Mesh.ARRAY_INDEX] = arr[Mesh.ARRAY_INDEX]
+		if arr[Mesh.ARRAY_COLOR] != null:
+			na[Mesh.ARRAY_COLOR] = arr[Mesh.ARRAY_COLOR]
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, na)
+	return out
 
 static func _first_texture(scene: PackedScene) -> Texture2D:
 	var root := scene.instantiate()
@@ -67,32 +170,6 @@ static func _first_texture(scene: PackedScene) -> Texture2D:
 			break
 	root.free()
 	return tex
-
-## one animation frame of a skinned GLB baked into a single static mesh (so hundreds can be instanced)
-static func bake_pose(host: Node, scene: PackedScene, clip: String, t: float) -> ArrayMesh:
-	var root: Node3D = scene.instantiate()
-	root.visible = false
-	host.add_child(root)
-	var ap: AnimationPlayer = root.find_child("AnimationPlayer", true, false)
-	ap.play(clip)
-	ap.seek(t, true)
-	ap.advance(0)
-	var skel: Skeleton3D = root.find_child("Skeleton3D", true, false)
-	skel.force_update_all_bone_transforms()
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var root_inv := root.global_transform.affine_inverse()
-	for n in root.find_children("*", "MeshInstance3D", true, false):
-		var mi := n as MeshInstance3D
-		if not mi.visible:
-			continue
-		var mesh: Mesh = mi.bake_mesh_from_current_skeleton_pose() if mi.skin != null else mi.mesh
-		var xf := root_inv * mi.global_transform
-		for s in mesh.get_surface_count():
-			st.append_from(mesh, s, xf)
-	root.queue_free()
-	st.generate_normals()
-	return st.commit()
 
 static func _slime_mesh() -> ArrayMesh:
 	var st := SurfaceTool.new()
@@ -116,32 +193,36 @@ static func _slime_mesh() -> ArrayMesh:
 
 func update(pool: EnemyPool, time: float) -> void:
 	for t in _views:
-		_views[t].n = 0
+		_views[t].n.fill(0)
 	for i in pool.count:
 		var t := pool.type[i]
 		if not _views.has(t):
 			continue
 		var v: Dictionary = _views[t]
-		var k: int = v.n
-		if k >= v.mi.multimesh.instance_count:
-			continue
-		v.n = k + 1
 		var frozen := pool.frozen[i] > 0.0
-		var big: float = Data.ELITE.scale if pool.elite[i] == 1 else 1.0
-		var phase := time * 10.0 + (pool.uid[i] % 97)
-		var s := 0.0 if frozen else sin(phase)
-		var yaw := atan2(pool.dir_x[i], pool.dir_z[i])
+		var big: float = Monsters.ELITE.scale if pool.elite[i] == 1 else 1.0
 		var sc: float = v.scale * big
-		var basis: Basis
+		var yaw := atan2(pool.dir_x[i], pool.dir_z[i])
 		var pos := Vector3(pool.x[i], 0, pool.z[i])
-		if t == Data.T_SLIME:
-			basis = Basis(Vector3.UP, yaw) * Basis.from_scale(Vector3(sc * (1 - 0.08 * s), sc * (1 + 0.16 * s), sc * (1 - 0.08 * s)))
+		var basis: Basis
+		var f := 0
+		if v.animated:
+			# each enemy runs its own loop offset; frozen = held pose
+			var ph: float = (pool.uid[i] % 97) * 0.173 + (0.0 if frozen else time * v.rate / v.len)
+			var nf: int = v.frames.size()
+			f = int(floor(ph * nf)) % nf
+			basis = Basis(Vector3.UP, yaw) * Basis.from_scale(Vector3.ONE * sc)
 		else:
-			# YXZ euler (yaw then roll) like the TS view
-			basis = Basis.from_euler(Vector3(0, yaw, s * 0.17), EULER_ORDER_YXZ) * Basis.from_scale(Vector3.ONE * sc)
-			pos.y = absf(s) * 0.12
-		var mm: MultiMesh = v.mi.multimesh
-		mm.set_instance_transform(k, Transform3D(basis, pos))
-		mm.set_instance_custom_data(k, Color(1.0 if pool.hit_flash[i] > 0.0 else 0.0, 2.0 if frozen else (1.0 if pool.elite[i] == 1 else 0.0), 0, 0))
+			var s := 0.0 if frozen else sin(time * 10.0 + (pool.uid[i] % 97))
+			basis = Basis(Vector3.UP, yaw) * Basis.from_scale(Vector3(sc * (1 - 0.08 * s), sc * (1 + 0.16 * s), sc * (1 - 0.08 * s)))
+		var mi: MultiMeshInstance3D = v.frames[f]
+		var k: int = v.n[f]
+		if k >= mi.multimesh.instance_count:
+			continue
+		v.n[f] = k + 1
+		mi.multimesh.set_instance_transform(k, Transform3D(basis, pos))
+		mi.multimesh.set_instance_custom_data(k, Color(1.0 if pool.hit_flash[i] > 0.0 else 0.0, 2.0 if frozen else (1.0 if pool.elite[i] == 1 else 0.0), 0, 0))
 	for t in _views:
-		_views[t].mi.multimesh.visible_instance_count = _views[t].n
+		var v: Dictionary = _views[t]
+		for f in v.frames.size():
+			v.frames[f].multimesh.visible_instance_count = v.n[f]

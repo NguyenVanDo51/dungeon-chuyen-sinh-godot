@@ -1,15 +1,17 @@
 class_name DungeonView
 extends Node3D
 ## floor / walls / pillars / torches / runes / boss doors from the grid (port of render/dungeonView.ts)
+## pieces + colours come from the map theme's ThemeSkin; rebuilt when the map changes
 
-## walls on the camera side are shortened so they never hide the player
-const NEAR_WALL_SCALE_Y := 0.3
 const MAX_TORCH_LIGHTS := 8
-const TORCH_LIGHTS: Array[Color] = [Color("#ff8fd8"), Color("#5ff3ff")]
 
 var _doors: Node3D
 
-func build(g: Grid) -> void:
+func clear() -> void:
+	for c in get_children():
+		c.queue_free()
+
+func build(g: Grid, th: ThemeSkin, spots: Array) -> void:
 	var C := Grid.CELL
 	var door_set := {}
 	for i in g.doors:
@@ -30,31 +32,38 @@ func build(g: Grid) -> void:
 			var kind := g.cell_at(cx, cz)
 			var is_door := door_set.has(cz * g.w + cx)
 			if kind != Grid.WALL or is_door:
-				put.call("floor_tile_large", c.x, 0.0, c.y)
+				put.call(th.floor_piece, c.x, 0.0, c.y)
 			if is_door:
 				var pass_z: bool = (g.walkable(cx, cz - 1) and not door_set.has((cz - 1) * g.w + cx)) or (g.walkable(cx, cz + 1) and not door_set.has((cz + 1) * g.w + cx))
 				door_xf.append(Transform3D(Basis(Vector3.UP, 0.0 if pass_z else PI / 2), Vector3(c.x, 0, c.y)))
 				continue
 			if kind == Grid.PILLAR:
-				put.call("pillar", c.x, 0.0, c.y, 0.0, Vector3(1.8, 1, 1.8))
-				put.call("barrel_small", c.x + 1.4, 0.0, c.y + 1.3, rng.next() * 6.0)
-				put.call("crates_stacked", c.x - 1.1, 0.0, c.y - 1.0, rng.next() * 6.0, Vector3(0.8, 0.8, 0.8))
+				put.call(th.pillar_piece, c.x, 0.0, c.y, 0.0, th.pillar_scale)
+				put.call(th.prop_a, c.x + 1.4, 0.0, c.y + 1.3, rng.next() * 6.0)
+				put.call(th.prop_b, c.x - 1.1, 0.0, c.y - 1.0, rng.next() * 6.0, Vector3(0.8, 0.8, 0.8))
 				continue
 			if kind != Grid.WALL:
 				continue
 			# wall faces toward each open neighbour
-			if open.call(cx, cz + 1): put.call("wall", c.x, 0.0, (cz + 1) * C - 0.5, 0.0)
-			if open.call(cx, cz - 1): put.call("wall", c.x, 0.0, cz * C + 0.5, PI, Vector3(1, NEAR_WALL_SCALE_Y, 1))
-			if open.call(cx + 1, cz): put.call("wall", (cx + 1) * C - 0.5, 0.0, c.y, PI / 2)
-			if open.call(cx - 1, cz): put.call("wall", cx * C + 0.5, 0.0, c.y, -PI / 2)
+			var W := th.wall_piece
+			if open.call(cx, cz + 1): put.call(W, c.x, 0.0, (cz + 1) * C - 0.5, 0.0)
+			if open.call(cx, cz - 1): put.call(W, c.x, 0.0, cz * C + 0.5, PI, Vector3(1, th.near_wall_scale, 1))
+			if open.call(cx + 1, cz): put.call(W, (cx + 1) * C - 0.5, 0.0, c.y, PI / 2)
+			if open.call(cx - 1, cz): put.call(W, cx * C + 0.5, 0.0, c.y, -PI / 2)
 			# torches on back walls (floor in front at +z), spaced out
 			if g.walkable(cx, cz + 1) and not open.call(cx, cz) and (cx + cz) % 5 == 0:
 				torches.append(Vector3(c.x, 0, (cz + 1) * C + 0.7))
 	for t in torches:
-		put.call("torch_lit", t.x, 0.4, t.z)
+		put.call(th.torch_piece, t.x, 0.4, t.z)
 
 	for piece in placements:
-		var src := Gfx.first_mesh(Gfx.load_glb("dungeon/%s.glb" % piece))
+		if piece == "":
+			continue
+		var scene := load(piece) as PackedScene
+		if scene == null:
+			push_error("theme %s: piece not found %s" % [th.id, piece])
+			continue
+		var src := Gfx.first_mesh(scene)
 		var list: Array = placements[piece]
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -64,11 +73,11 @@ func build(g: Grid) -> void:
 			mm.set_instance_transform(i, list[i] * src.xform)
 		var mi := MultiMeshInstance3D.new()
 		mi.multimesh = mm
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if piece == "floor_tile_large" else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF if piece == th.floor_piece else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		add_child(mi)
 
 	# torch glow: a few real lights + a bloom flame on every torch
-	var flames := Gfx.multi(Gfx.sphere(0.22, 6, 8), Gfx.glow_mat(Color("#ff8fd8"), Gfx.GLOW.torch), torches.size())
+	var flames := Gfx.multi(Gfx.sphere(0.22, 6, 8), Gfx.glow_mat(th.torch_flame, Gfx.GLOW.torch), torches.size())
 	for i in torches.size():
 		flames.multimesh.set_instance_transform(i, Transform3D(Basis(), torches[i] + Vector3(0, 1.25, 0)))
 	flames.multimesh.visible_instance_count = -1
@@ -78,8 +87,8 @@ func build(g: Grid) -> void:
 	var i := 0
 	while i < torches.size() and n < MAX_TORCH_LIGHTS:
 		var l := OmniLight3D.new()
-		l.light_color = TORCH_LIGHTS[n % 2]
-		l.light_energy = 4.0
+		l.light_color = th.torch_lights[n % th.torch_lights.size()]
+		l.light_energy = th.torch_energy
 		l.omni_range = 22.0
 		l.omni_attenuation = 1.5
 		l.position = torches[i] + Vector3(0, 2.2, 0)
@@ -91,11 +100,11 @@ func build(g: Grid) -> void:
 	var rune_ring := Gfx.ring_mesh(2.6, 3.0, 48)
 	var rune_inner := Gfx.ring_mesh(1.4, 1.55, 6)
 	var k := 0
-	for s in Data.SPOTS:
-		if not s.rune:
+	for s in spots:
+		if not s.get("rune", false):
 			continue
 		var c := Grid.cell_center(s.cx, s.cz)
-		var mat := Gfx.glow_mat(Gfx.CYAN if k % 2 else Gfx.PINK, Gfx.GLOW.rune, Gfx.GLOW.rune_opacity)
+		var mat := Gfx.glow_mat(th.rune_colors[k % th.rune_colors.size()], Gfx.GLOW.rune, Gfx.GLOW.rune_opacity)
 		for mesh in [rune_ring, rune_inner]:
 			var m := MeshInstance3D.new()
 			m.mesh = mesh
@@ -108,10 +117,10 @@ func build(g: Grid) -> void:
 	# sealed boss doors: stone barrier + glowing seal
 	_doors = Node3D.new()
 	add_child(_doors)
-	if door_xf.size() > 0:
-		var src := Gfx.first_mesh(Gfx.load_glb("dungeon/barrier.glb"))
+	if door_xf.size() > 0 and th.barrier_piece != "":
+		var src := Gfx.first_mesh(load(th.barrier_piece))
 		var seal_mesh := Gfx.box(4, 2.6, 0.12)
-		var seal_mat := Gfx.glow_mat(Gfx.CYAN, Gfx.GLOW.rune, 0.35)
+		var seal_mat := Gfx.glow_mat(th.rune_colors[th.rune_colors.size() - 1], Gfx.GLOW.rune, 0.35)
 		for xf in door_xf:
 			var b := MeshInstance3D.new()
 			b.mesh = src.mesh

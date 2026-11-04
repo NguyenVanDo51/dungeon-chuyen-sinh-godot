@@ -1,8 +1,11 @@
 class_name Boss
-## Lich: warning at 7:57, arena at 8:00, 6 attacks, enrage after 2 min; plus hostile shots / zones
+## boss fight (port of game/boss.ts + hostile.ts): survival wakes it on the clock, a dungeon when the player
+## enters the boss room (or the time limit pulls them in); attacks from Bosses.DEFS; plus hostile shots / zones
 
 class State:
 	var uid: int
+	## hp at spawn (HUD bar)
+	var max_hp := 1.0
 	var age := 0.0
 	var enraged := false
 	## seconds left frozen in place, no casting (holy wrath)
@@ -39,11 +42,12 @@ static func _zone(w: World, x: float, z: float, r: float, delay: float, damage: 
 	zn.x = x; zn.z = z; zn.r = r; zn.delay = delay; zn.max_delay = delay; zn.damage = damage
 	w.hostile_zones.append(zn)
 
+## hostile damage: enrage × the mode's boss difficulty
 static func _dmg_mul(w: World, b: State) -> float:
-	return (Data.LICH.enrage.damage_mul if b.enraged else 1.0)
+	return (w.boss_def.enrage.damage_mul if b.enraged else 1.0) * w.rules.boss_difficulty
 
 static func _cast(w: World, b: State, a: Dictionary, at: Vector2) -> void:
-	var D := Data.LICH
+	var D := w.boss_def
 	match a.kind:
 		"volley":
 			var n := roundi(a.count * (D.enrage.count_mul if b.enraged else 1.0))
@@ -51,8 +55,8 @@ static func _cast(w: World, b: State, a: Dictionary, at: Vector2) -> void:
 				var ang: float = b.age * 0.7 + (TAU * k) / n
 				_shot(w, at.x, at.y, ang, a.speed, a.radius, a.damage * _dmg_mul(w, b), a.life)
 		"summon":
-			var m: int = D.minion
-			var last := Data.ZONE_TYPES.size() - 1
+			var m := Monsters.idx(D.minion)
+			var last := w.last_zone()
 			for k in a.n:
 				var ang: float = (TAU * k) / a.n
 				var sx: float = at.x + cos(ang) * a.ring
@@ -60,7 +64,7 @@ static func _cast(w: World, b: State, a: Dictionary, at: Vector2) -> void:
 				if not w.grid.walkable_at(sx, sz):
 					sx = at.x
 					sz = at.y
-				w.enemies.spawn(m, sx, sz, Data.ENEMIES[m].hp * w.scale_at(last).hp, false, 0)
+				w.enemies.spawn(m, sx, sz, Monsters.DEFS[m].hp * w.scale_at(last).hp, false, last if w.rules.spawn == "depth" else 0)
 		"spiral":
 			b.channel = { left = a.duration, acc = 0.0, ang = b.age, spec = a }
 		"cage":
@@ -70,8 +74,8 @@ static func _cast(w: World, b: State, a: Dictionary, at: Vector2) -> void:
 				var ang: float = a0 + (TAU * k) / a.n
 				_zone(w, p.x + cos(ang) * a.ring, p.z + sin(ang) * a.ring, a.radius, a.delay, a.damage * _dmg_mul(w, b))
 		"adds":
-			var last := Data.ZONE_TYPES.size() - 1
-			var pool: Array = Data.ZONE_TYPES[last]
+			var last := w.last_zone()
+			var pool: Array = w.zone_types[last]
 			var p := w.player
 			var g := w.grid
 			# flow field = where the player can walk: in a sealed arena that is the room itself
@@ -80,7 +84,7 @@ static func _cast(w: World, b: State, a: Dictionary, at: Vector2) -> void:
 				if w.flow.dist[i] < 0:
 					continue
 				var c := Grid.cell_center(i % g.w, i / g.w)
-				if Vector2(c.x - p.x, c.y - p.z).length() >= a.min_dist:
+				if Vec.hypot(c.x - p.x, c.y - p.z) >= a.min_dist:
 					cells.append(i)
 			if cells.is_empty():
 				return
@@ -89,7 +93,7 @@ static func _cast(w: World, b: State, a: Dictionary, at: Vector2) -> void:
 				var i := cells[w.rng.rint(0, cells.size() - 1)]
 				var c := Grid.cell_center(i % g.w, i / g.w)
 				var t: int = pool[w.rng.rint(0, pool.size() - 1)]
-				w.enemies.spawn(t, c.x, c.y, Data.ENEMIES[t].hp * w.scale_at(last).hp, false, last)
+				w.enemies.spawn(t, c.x, c.y, Monsters.DEFS[t].hp * w.scale_at(last).hp, false, last)
 		"nova":
 			var p := w.player
 			for k in a.n:
@@ -112,29 +116,35 @@ static func _emit_spiral(w: World, b: State, at: Vector2, dt: float) -> void:
 	if ch.left <= 0.0:
 		b.channel = null
 
-static func _spawn(w: World) -> void:
+static func _spawn(w: World, pull := false) -> void:
 	var e := w.enemies
-	w.enter_arena()
+	var D := w.boss_def
+	w.enter_arena(pull)
 	var at := w.grid.boss_spawn if w.grid.has_boss_spawn else w.grid.start
-	var i := e.spawn(Data.LICH.enemy, at.x, at.y, Data.LICH.hp)
+	var i := e.spawn(Monsters.idx(D.enemy), at.x, at.y, D.hp * w.rules.boss_difficulty)
 	if i < 0:
 		return
 	var b := State.new()
 	b.uid = e.uid[i]
-	for a in Data.LICH.attacks:
+	b.max_hp = D.hp * w.rules.boss_difficulty
+	for a in D.attacks:
 		b.t.append(a.first)
 	w.boss = b
 	w.events.append({ t = "bossSpawn" })
 
 static func update(w: World, dt: float) -> void:
-	var D := Data.LICH
+	var D := w.boss_def
 	if w.boss == null:
 		if w.boss_defeated:
 			return
-		if not w.boss_warned and w.time >= Data.BOSS_AT - D.warn_seconds:
+		if w.rules.boss == "enterRoom":
+			_update_room(w, dt)
+			return
+		var at: float = w.rules.boss_at
+		if not w.boss_warned and w.time >= at - D.warn_seconds:
 			w.boss_warned = true
-			w.events.append({ t = "bossWarn" })
-		if w.time >= Data.BOSS_AT:
+			w.events.append({ t = "bossWarn", pull = false })
+		if w.time >= at:
 			_spawn(w)
 		return
 	var b: State = w.boss
@@ -156,16 +166,19 @@ static func update(w: World, dt: float) -> void:
 	var z := e.z[i]
 	var dx := p.x - x
 	var dz := p.z - z
-	var d := sqrt(dx * dx + dz * dz)
-	var def: Dictionary = Data.ENEMIES[D.enemy]
+	var d := Vec.hypot(dx, dz)
+	var def: Dictionary = Monsters.DEFS[Monsters.idx(D.enemy)]
 	if d > D.keep_distance:
-		var dir := w.flow.direction(w.grid, x, z)
-		if dir == Vector2.ZERO and d > 1e-4:
-			dir = Vector2(dx / d, dz / d)
+		w.flow.direction(w.grid, x, z)
+		var dirx := FlowField.ox
+		var dirz := FlowField.oz
+		if dirx == 0.0 and dirz == 0.0 and d > 1e-4:
+			dirx = dx / d
+			dirz = dz / d
 		var speed: float = def.speed * (D.enrage.speed_mul if b.enraged else 1.0)
-		var res := Collision.resolve(w.grid, x + dir.x * speed * dt, z + dir.y * speed * dt, def.radius)
-		e.x[i] = res.x
-		e.z[i] = res.y
+		Collision.resolve(w.grid, x + dirx * speed * dt, z + dirz * speed * dt, def.radius)
+		e.x[i] = Collision.rx
+		e.z[i] = Collision.rz
 	if d > 1e-4:
 		e.dir_x[i] = dx / d
 		e.dir_z[i] = dz / d
@@ -180,6 +193,42 @@ static func update(w: World, dt: float) -> void:
 		w.events.append({ t = "bossCast", kind = a.kind })
 	_emit_spiral(w, b, at, dt)
 
+## dungeon: standing in the boss room for warn_seconds wakes it; the time limit drags an outside player in
+static func _update_room(w: World, dt: float) -> void:
+	var D := w.boss_def
+	var p := w.player
+	var lim: float = w.rules.boss_at
+	var inside := w.grid.in_boss_room(p.x, p.z)
+	# a player already inside gets the walk-in warning only, never both
+	if not w.limit_warned and not inside and not w.boss_warned and w.time >= lim - D.warn_seconds:
+		w.limit_warned = true
+		w.events.append({ t = "bossWarn", pull = true })
+	if w.time >= lim:
+		# time is up: drop an outside player into the room, then seal it like a walk-in
+		if not inside:
+			var c: Vector2
+			if w.map.has("arena_entry"):
+				c = Grid.cell_center(w.map.arena_entry.x, w.map.arena_entry.y)
+			else:
+				c = w.grid.boss_spawn if w.grid.has_boss_spawn else w.grid.start
+			p.x = c.x
+			p.z = c.y
+		_spawn(w, not inside)
+		return
+	# stepping out during the warning re-arms it, so the doors never seal with the player outside
+	if not inside:
+		w.boss_warned = false
+		w.boss_warn_t = 0.0
+		return
+	if not w.boss_warned:
+		w.boss_warned = true
+		w.boss_warn_t = 0.0
+		if not w.limit_warned:
+			w.events.append({ t = "bossWarn", pull = false })
+	w.boss_warn_t += dt
+	if w.boss_warn_t >= D.warn_seconds:
+		_spawn(w)
+
 static func update_hostile(w: World, dt: float) -> void:
 	var p := w.player
 	var pr: float = Data.BALANCE.player_radius
@@ -190,7 +239,7 @@ static func update_hostile(w: World, dt: float) -> void:
 		s.z += s.vz * dt
 		s.life -= dt
 		var dead := s.life <= 0.0 or not w.grid.walkable_at(s.x, s.z)
-		if not dead and p.invuln <= 0.0 and Vector2(p.x - s.x, p.z - s.z).length() < s.r + pr:
+		if not dead and p.invuln <= 0.0 and Vec.hypot(p.x - s.x, p.z - s.z) < s.r + pr:
 			Enemies.hurt_player(w, s.damage)
 			dead = true
 		if dead:
@@ -202,7 +251,7 @@ static func update_hostile(w: World, dt: float) -> void:
 		zn.delay -= dt
 		if zn.delay > 0.0:
 			continue
-		if p.invuln <= 0.0 and Vector2(p.x - zn.x, p.z - zn.z).length() <= zn.r + pr:
+		if p.invuln <= 0.0 and Vec.hypot(p.x - zn.x, p.z - zn.z) <= zn.r + pr:
 			Enemies.hurt_player(w, zn.damage)
 		w.events.append({ t = "explode", x = zn.x, z = zn.z, radius = zn.r, kind = "nova" })
 		zones[k] = zones[zones.size() - 1]

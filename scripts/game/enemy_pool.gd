@@ -28,7 +28,7 @@ func _init(cap: int) -> void:
 	for a in [x, z, hp, hit_flash, dir_x, dir_z, slow, frozen, type, uid, elite, zone]:
 		a.resize(cap)
 	if CC_IMMUNE.is_empty():
-		for d in Data.ENEMIES:
+		for d in Monsters.DEFS:
 			CC_IMMUNE.append(d.cc_immune)
 			SCRIPTED.append(d.scripted)
 			RADIUS.append(d.radius)
@@ -52,7 +52,7 @@ func immovable(i: int) -> bool:
 	return elite[i] == 1 or CC_IMMUNE[type[i]]
 
 func radius(i: int) -> float:
-	return RADIUS[type[i]] * (Data.ELITE.radius_mul if elite[i] == 1 else 1.0)
+	return RADIUS[type[i]] * (Monsters.ELITE.radius_mul if elite[i] == 1 else 1.0)
 
 func kill(i: int) -> void:
 	count -= 1

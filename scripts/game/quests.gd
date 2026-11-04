@@ -1,5 +1,5 @@
 class_name Quests
-## 2 random quests per run at 1:30 and 4:00 (port of game/quests/*)
+## 2 random quests per run (port of game/quests/*): survival by the clock, dungeon on first reaching a zone
 
 const NEIGH: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]
 
@@ -25,8 +25,9 @@ class Lure:
 		var C: Dictionary = Data.QUESTS.crystal
 		quest.data.hp -= C.chip * (C.elite_chip if w.enemies.elite[i] == 1 else 1.0) * dt
 
-static func pick_kinds(rng: Rng) -> Array[String]:
-	var left: Array[String] = Data.QUEST_KINDS.duplicate()
+static func pick_kinds(rng: Rng, pool: Array) -> Array[String]:
+	var left: Array[String] = []
+	left.assign(pool)
 	var out: Array[String] = []
 	while out.size() < 2 and left.size() > 0:
 		var k := rng.rint(0, left.size() - 1)
@@ -44,8 +45,8 @@ static func reward_xp(level: int, levels: float = Data.QUESTS.reward_levels) -> 
 static func _pick_spot(w: World) -> Variant:
 	# random reachable room within max_walk cells, the player's own included
 	var reach := []
-	for s in Data.SPOTS:
-		if s.quest and w.flow.dist[s.cz * w.grid.w + s.cx] >= 0:
+	for s in w.map.spots:
+		if s.get("quest", false) and w.flow.dist[s.cz * w.grid.w + s.cx] >= 0:
 			reach.append(s)
 	if reach.is_empty():
 		return null
@@ -80,11 +81,22 @@ static func end(w: World, success: bool) -> void:
 	w.events.append({ t = "questEnd", kind = q.kind, success = success })
 	if success:
 		w.add_xp(reward_xp(w.level))
+		w.add_gold(Data.GOLD.quest)
+
+## atTime: by the clock; atZone: the first time the player reaches that depth (not from the boss room)
+static func _due(w: World) -> bool:
+	var at: Array = w.rules.quest_at
+	if w.quest_next >= at.size():
+		return false
+	if w.rules.quests == "atTime":
+		return w.time >= at[w.quest_next]
+	var p := w.player
+	return not w.grid.in_boss_room(p.x, p.z) and w.zone_at(p.x, p.z) >= at[w.quest_next]
 
 static func update(w: World, dt: float) -> void:
 	if w.boss != null:
 		return
-	if w.quest == null and w.quest_next < w.quests.size() and w.time >= Data.QUEST_AT[w.quest_next]:
+	if w.quest == null and w.quest_next < w.quests.size() and _due(w):
 		start(w, w.quests[w.quest_next])
 		w.quest_next += 1
 	var q: State = w.quest
@@ -92,7 +104,7 @@ static func update(w: World, dt: float) -> void:
 		return
 	q.t += dt
 	if q.phase == "waiting":
-		if Vector2(w.player.x - q.x, w.player.z - q.z).length() <= Data.QUESTS.trigger_radius:
+		if Vec.hypot(w.player.x - q.x, w.player.z - q.z) <= Data.QUESTS.trigger_radius:
 			q.phase = "active"
 			q.t = 0.0
 			_activate(w, q)
@@ -109,7 +121,7 @@ static func update(w: World, dt: float) -> void:
 static func _activate(w: World, q: State) -> void:
 	match q.kind:
 		"bounce":
-			q.data = { progress = 0, misses = 0, from = Vector2(q.x, q.z), target = _landing(w, q, null), land = Data.QUESTS.bounce.warn }
+			q.data = { progress = 0, misses = 0, from = { x = q.x, z = q.z }, target = _landing(w, q, {}), land = Data.QUESTS.bounce.warn }
 		"hold":
 			q.data = { progress = 0.0 }
 		"crystal":
@@ -132,10 +144,10 @@ static func _update(w: World, q: State, dt: float) -> Variant:
 			d.land -= dt
 			if d.land > 0.0:
 				return null
-			var hit: bool = Vector2(p.x - d.target.x, p.z - d.target.y).length() <= B.radius + Data.BALANCE.player_radius
+			var hit: bool = Vec.hypot(p.x - d.target.x, p.z - d.target.z) <= B.radius + Data.BALANCE.player_radius
 			if hit: d.progress += 1
 			else: d.misses += 1
-			w.events.append({ t = "bounceLand", x = d.target.x, z = d.target.y, hit = hit })
+			w.events.append({ t = "bounceLand", x = d.target.x, z = d.target.z, hit = hit })
 			if d.misses >= B.max_miss:
 				return false
 			if d.progress + d.misses >= B.count:
@@ -146,7 +158,7 @@ static func _update(w: World, q: State, dt: float) -> Variant:
 			return null
 		"hold":
 			var H: Dictionary = Data.QUESTS.hold
-			var inside: bool = Vector2(p.x - q.x, p.z - q.z).length() <= H.radius
+			var inside: bool = Vec.hypot(p.x - q.x, p.z - q.z) <= H.radius
 			d.progress = maxf(0.0, d.progress + (dt if inside else -H.drain * dt))
 			if d.progress >= H.need:
 				return true
@@ -178,7 +190,8 @@ static func arrow_target(w: World, q: State) -> Vector2:
 			return Vector2(w.enemies.x[i], w.enemies.z[i])
 	return Vector2(q.x, q.z)
 
-static func _landing(w: World, q: State, prev: Variant) -> Vector2:
+## {x, z}; prev = {} for the first hop
+static func _landing(w: World, q: State, prev: Dictionary) -> Dictionary:
 	var B: Dictionary = Data.QUESTS.bounce
 	for k in 30:
 		var a := w.rng.next() * TAU
@@ -187,10 +200,10 @@ static func _landing(w: World, q: State, prev: Variant) -> Vector2:
 		var z: float = q.z + sin(a) * dd
 		if not w.grid.walkable_at(x, z):
 			continue
-		if prev != null and Vector2(x - prev.x, z - prev.y).length() < B.min_hop:
+		if not prev.is_empty() and Vec.hypot(x - prev.x, z - prev.z) < B.min_hop:
 			continue
-		return Vector2(x, z)
-	return Vector2(q.x, q.z)
+		return { x = x, z = z }
+	return { x = q.x, z = q.z }
 
 static func _spawn_thief(w: World, q: State) -> int:
 	var sx := q.x
@@ -218,7 +231,7 @@ static func _spawn_thief(w: World, q: State) -> int:
 				far = j
 		if far >= 0:
 			e.kill(far)
-	var i := e.spawn(Data.T_THIEF, sx, sz, Data.ENEMIES[Data.T_THIEF].hp * w.scale_at(w.zone_at(q.x, q.z)).hp)
+	var i := e.spawn(Monsters.THIEF, sx, sz, Monsters.DEFS[Monsters.THIEF].hp * w.scale_at(w.zone_at(q.x, q.z)).hp)
 	return e.uid[i] if i >= 0 else -1
 
 static func _update_thief(w: World, q: State, dt: float) -> Variant:
@@ -253,15 +266,15 @@ static func _update_thief(w: World, q: State, dt: float) -> Variant:
 			tz = (nz + 0.5) * Grid.CELL
 	var vx := tx - x
 	var vz := tz - z
-	var l := sqrt(vx * vx + vz * vz)
+	var l := Vec.hypot(vx, vz)
 	if l < 1e-4:
 		return null
-	var step := minf(l, Data.ENEMIES[Data.T_THIEF].speed * dt)
-	var res := Collision.resolve(g, x + (vx / l) * step, z + (vz / l) * step, Data.ENEMIES[Data.T_THIEF].radius)
-	if g.in_boss_room(res.x, res.y):
+	var step := minf(l, Monsters.DEFS[Monsters.THIEF].speed * dt)
+	Collision.resolve(g, x + (vx / l) * step, z + (vz / l) * step, Monsters.DEFS[Monsters.THIEF].radius)
+	if g.in_boss_room(Collision.rx, Collision.rz):
 		return null
-	e.x[i] = res.x
-	e.z[i] = res.y
+	e.x[i] = Collision.rx
+	e.z[i] = Collision.rz
 	e.dir_x[i] = vx / l
 	e.dir_z[i] = vz / l
 	return null

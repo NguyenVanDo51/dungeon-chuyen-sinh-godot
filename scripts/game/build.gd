@@ -42,7 +42,7 @@ func offer_choices(locked: Dictionary, rng: Rng, pool: Array[String], n := 3) ->
 	while picked.size() < n and remaining.size() > 0:
 		var weights := []
 		for o in remaining:
-			weights.append(Data.item_def(o.id).weight)
+			weights.append(Items.def(o.id).weight)
 		var o = rng.pick_weighted(remaining, weights)
 		if o == null:
 			break
@@ -60,9 +60,9 @@ func apply_offer(offer: Dictionary) -> Array[String]:
 				s.level = offer.to_level
 	var unlocked: Array[String] = []
 	for s in slots:
-		if not Data.is_weapon(s.id) or s.level < MAX_LEVEL or hidden.has(s.id):
+		if not Items.is_weapon(s.id) or s.level < MAX_LEVEL or hidden.has(s.id):
 			continue
-		if has(Data.WEAPONS[s.id].paired):
+		if has(Items.WEAPONS[s.id].paired):
 			hidden[s.id] = true
 			unlocked.append(s.id)
 	return unlocked
@@ -75,8 +75,7 @@ static func pick_locked(rng: Rng, pool: Array[String]) -> Dictionary:
 	return out
 
 ## modifiers from stat levels × hero base stats
-func modifiers() -> Dictionary:
-	var K := Data.KNIGHT
+func modifiers(K: Dictionary) -> Dictionary:
 	return {
 		damage_mul = K.damage_mul * (1.0 + 0.1 * level_of("might")),
 		move_speed_mul = K.speed_mul * (1.0 + 0.08 * level_of("speed")),

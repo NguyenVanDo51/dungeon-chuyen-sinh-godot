@@ -1,5 +1,5 @@
 class_name Projectiles
-## player projectiles: fireball, sword wave, meteor (delayed sky strike)
+## player projectiles: arrow, fireball, sword wave, meteor (delayed sky strike)
 
 class Shot:
 	var kind: String
@@ -26,7 +26,7 @@ static func explode(w: World, x: float, z: float, radius: float, damage: float, 
 	w.events.append({ t = "explode", x = x, z = z, radius = radius, kind = kind })
 	for i in range(e.count - 1, -1, -1):
 		var r := radius + e.radius(i)
-		if Vector2(e.x[i] - x, e.z[i] - z).length() <= r and Enemies.can_reach(w, x, z, i):
+		if Vec.hypot(e.x[i] - x, e.z[i] - z) <= r and Enemies.can_reach(w, x, z, i):
 			Enemies.damage(w, i, damage)
 
 static func update(w: World, dt: float) -> void:
@@ -56,7 +56,7 @@ static func update(w: World, dt: float) -> void:
 					var u := e.uid[i]
 					if not p.hit_ids.has(u):
 						var r := p.radius + e.radius(i)
-						if Vector2(e.x[i] - p.x, e.z[i] - p.z).length() <= r:
+						if Vec.hypot(e.x[i] - p.x, e.z[i] - p.z) <= r:
 							if p.kind == "fireball":
 								explode(w, p.x, p.z, p.explode_radius, p.damage, "fireball")
 								dead = true
@@ -64,7 +64,7 @@ static func update(w: World, dt: float) -> void:
 								p.hit_ids[u] = true
 								Enemies.damage(w, i, p.damage)
 								# each wave heals at most one swing's worth
-								if p.kind == "swordWave" and p.hit_ids.size() * Data.LEECH.per_hit <= Data.LEECH.max_per_swing:
+								if p.kind == "swordWave" and p.hit_ids.size() * Characters.LEECH.per_hit <= Characters.LEECH.max_per_swing:
 									w.weapon_hits("holySword", 1)
 								p.pierce -= 1.0
 								if p.pierce <= 0.0:

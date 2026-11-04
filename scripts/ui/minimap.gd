@@ -51,7 +51,7 @@ func _draw() -> void:
 	for i in e.count:
 		if e.elite[i] == 1:
 			draw_circle(_p(e.x[i], e.z[i]), 0.6 * _cell, Color("#ffd36e"))
-		elif e.type[i] == Data.T_THIEF:
+		elif e.type[i] == Monsters.THIEF:
 			draw_circle(_p(e.x[i], e.z[i]), 0.7 * _cell, Color("#d9a6ff"))
 	if _w.quest:
 		var q := _w.quest
@@ -67,7 +67,7 @@ func _draw() -> void:
 		# boss not out yet: mark its room, label with the time left
 		var sp := _p(g.boss_spawn.x, g.boss_spawn.y)
 		draw_string(font, sp + Vector2(-8, 5), "☠", HORIZONTAL_ALIGNMENT_LEFT, -1, int(_cell * 3), Color.WHITE)
-		var left := ceili(maxf(0.0, Data.BOSS_AT - _w.time))
+		var left := ceili(maxf(0.0, _w.boss_time() - _w.time))
 		draw_string(font, sp + Vector2(-12, _cell * 3.2), "%d:%02d" % [left / 60, left % 60], HORIZONTAL_ALIGNMENT_LEFT, -1, int(_cell * 1.7), Color("#d9c8ff"))
 	var pp := _p(_w.player.x, _w.player.z)
 	draw_circle(pp, 0.8 * _cell + 1.5, Color.WHITE)

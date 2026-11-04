@@ -1,0 +1,109 @@
+[gd_resource type="Resource" script_class="Style" format=3]
+
+[ext_resource type="Script" path="res://scripts/style/boss_skin.gd" id="1_x3daq"]
+[ext_resource type="Script" path="res://scripts/style/fx_skin.gd" id="2_koh4g"]
+[ext_resource type="Script" path="res://scripts/style/hero_skin.gd" id="3_hp8he"]
+[ext_resource type="Script" path="res://scripts/style/monster_skin.gd" id="4_v8uyo"]
+[ext_resource type="Script" path="res://scripts/style/style.gd" id="5_gdtip"]
+[ext_resource type="Script" path="res://scripts/style/theme_skin.gd" id="6_u07c4"]
+
+[sub_resource type="Resource" id="Resource_n87qp"]
+script = ExtResource("1_x3daq")
+id = "lich"
+model = "res://assets/characters/Skeleton_Mage.glb"
+walk_clip = "Walking_A"
+idle_clip = "Idle_Combat"
+cast_clip = "Spellcast_Shoot"
+summon_clip = "Spellcast_Summon"
+death_clip = "Death_A"
+
+[sub_resource type="Resource" id="Resource_5ke02"]
+script = ExtResource("2_koh4g")
+sword_model = "res://assets/props/sword_1handed.gltf"
+
+[sub_resource type="Resource" id="Resource_es1wa"]
+script = ExtResource("3_hp8he")
+id = "knight"
+model = "res://assets/characters/Knight.glb"
+attack_clip = "1H_Melee_Attack_Slice_Horizontal"
+hide_nodes = PackedStringArray("2H_Sword", "1H_Sword_Offhand", "Badge_Shield", "Rectangle_Shield", "Spike_Shield")
+
+[sub_resource type="Resource" id="Resource_11itf"]
+script = ExtResource("3_hp8he")
+id = "archer"
+model = "res://assets/characters/Rogue_Hooded.glb"
+attack_clip = "2H_Ranged_Shoot"
+hide_nodes = PackedStringArray("Knife_Offhand", "1H_Crossbow", "Knife", "Throwable")
+
+[sub_resource type="Resource" id="Resource_hpajr"]
+script = ExtResource("4_v8uyo")
+id = "slime"
+kind = "slime"
+height = 0.0
+scale = 0.8
+emissive = Color(0.16470589, 0.56078434, 0.41568628, 1)
+emissive_energy = 0.35
+
+[sub_resource type="Resource" id="Resource_3u6fv"]
+script = ExtResource("4_v8uyo")
+id = "skeleton"
+model = "res://assets/monsters/Orc_Skull.gltf"
+clip = "Run"
+height = 1.35
+scale = 0.0
+anim_rate = 0.8
+
+[sub_resource type="Resource" id="Resource_obyyn"]
+script = ExtResource("4_v8uyo")
+id = "goblin"
+model = "res://assets/monsters/Orc.gltf"
+clip = "Run"
+height = 1.15
+scale = 0.0
+emissive = Color(0.18431373, 0.61960787, 0.22745098, 1)
+emissive_energy = 0.2
+
+[sub_resource type="Resource" id="Resource_jk56o"]
+script = ExtResource("4_v8uyo")
+id = "warrior"
+model = "res://assets/monsters/Demon.gltf"
+clip = "Walk"
+height = 1.75
+scale = 0.0
+anim_rate = 1.3
+emissive = Color(0.61960787, 0.22745098, 0.22745098, 1)
+emissive_energy = 0.25
+
+[sub_resource type="Resource" id="Resource_61x8k"]
+script = ExtResource("4_v8uyo")
+id = "thief"
+model = "res://assets/characters/Skeleton_Minion.glb"
+clip = "Running_B"
+height = 0.0
+scale = 0.6
+anim_rate = 1.2
+tint = Color(0.8509804, 0.6509804, 1, 1)
+emissive = Color(0.47843137, 0.23529412, 0.78431374, 1)
+emissive_energy = 0.6
+max_instances = 8
+
+[sub_resource type="Resource" id="Resource_gw04b"]
+script = ExtResource("6_u07c4")
+floor_piece = "res://assets/dungeon/floor_tile_large.glb"
+wall_piece = "res://assets/dungeon/wall.glb"
+pillar_piece = "res://assets/dungeon/pillar.glb"
+torch_piece = "res://assets/dungeon/torch_lit.glb"
+barrier_piece = "res://assets/dungeon/barrier.glb"
+prop_a = "res://assets/dungeon/barrel_small.glb"
+prop_b = "res://assets/dungeon/crates_stacked.glb"
+torch_lights = PackedColorArray(1, 0.56078434, 0.84705883, 1, 0.37254903, 0.9529412, 1, 1)
+rune_colors = PackedColorArray(1, 0.56078434, 0.84705883, 1, 0.37254903, 0.9529412, 1, 1)
+
+[resource]
+script = ExtResource("5_gdtip")
+name = "Quaternius monsters"
+heroes = Array[ExtResource("3_hp8he")]([SubResource("Resource_es1wa"), SubResource("Resource_11itf")])
+monsters = Array[ExtResource("4_v8uyo")]([SubResource("Resource_hpajr"), SubResource("Resource_3u6fv"), SubResource("Resource_obyyn"), SubResource("Resource_jk56o"), SubResource("Resource_61x8k")])
+bosses = Array[ExtResource("1_x3daq")]([SubResource("Resource_n87qp")])
+themes = Array[ExtResource("6_u07c4")]([SubResource("Resource_gw04b")])
+fx = SubResource("Resource_5ke02")
