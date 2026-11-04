@@ -9,6 +9,8 @@ extends Resource
 @export var bosses: Array[BossSkin] = []
 @export var themes: Array[ThemeSkin] = []
 @export var fx: FxSkin
+## null = default sounds (assets/sfx/default)
+@export var sfx: SfxSkin
 
 const DEFAULT := "res://content/styles/kaykit.tres"
 

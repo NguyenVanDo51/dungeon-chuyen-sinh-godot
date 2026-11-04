@@ -1,0 +1,45 @@
+[gd_resource type="Resource" script_class="SfxSkin" format=3]
+
+[ext_resource type="Script" path="res://scripts/style/sfx_skin.gd" id="1_sfx"]
+
+[resource]
+script = ExtResource("1_sfx")
+folder = "res://assets/sfx/default"
+music_folder = "res://assets/music/default"
+gain_db = Dictionary[String, float]({
+"arrow_rain": -6.0,
+"beam": -11.0,
+"boss_bell": -3.0,
+"boss_cast": -5.0,
+"bow": -10.0,
+"doors": -2.0,
+"elite_kill": -6.0,
+"explode": -7.0,
+"fire_cast": -12.0,
+"footstep": -20.0,
+"frost": -8.0,
+"gold": -12.0,
+"heartbeat": -4.0,
+"hit": -15.0,
+"holy_wrath": -2.0,
+"hurt": -5.0,
+"kill": -11.0,
+"level_up": -5.0,
+"meteor": -4.0,
+"meteor_warn": -18.0,
+"nova": -5.0,
+"pickup": -6.0,
+"shield": -10.0,
+"shield_holy": -8.0,
+"swing": -9.0,
+"swing_holy": -7.0,
+"thunder": -8.0,
+"thunder_big": -6.0,
+"ui_back": -8.0,
+"ui_buy": -6.0,
+"ui_card": -6.0,
+"ui_click": -8.0,
+"ui_error": -8.0
+})
+music_db = -12.0
+pitch_jitter = 0.07

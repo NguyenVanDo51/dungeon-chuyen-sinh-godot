@@ -36,6 +36,9 @@ var alert: Label
 var banner: VBoxContainer
 var banner_name: Label
 var flash: ColorRect
+## red edge: hurt spike + low-hp pulse
+var vignette: ColorRect
+var _hurt_t := 0.0
 var dmg_layer: Control
 var _dmg: Array = []  # {label, x, z, t, life}
 
@@ -49,6 +52,15 @@ var _lu_count := 0
 var _slots_key := ""
 var _alert_t := 0.0
 var _banner_t := 0.0
+
+const VIGNETTE := """
+shader_type canvas_item;
+uniform float amount = 0.0;
+void fragment() {
+	float r = length((UV - 0.5) * vec2(1.7, 1.0));
+	COLOR = vec4(0.75, 0.0, 0.06, smoothstep(0.38, 0.98, r) * amount);
+}
+"""
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
@@ -66,6 +78,16 @@ func _ready() -> void:
 	flash.color = Color(1, 0.95, 0.8, 0)
 	flash.mouse_filter = MOUSE_FILTER_IGNORE
 	add_child(flash)
+	vignette = ColorRect.new()
+	vignette.set_anchors_and_offsets_preset(PRESET_FULL_RECT)
+	vignette.mouse_filter = MOUSE_FILTER_IGNORE
+	var sh := Shader.new()
+	sh.code = VIGNETTE
+	var m := ShaderMaterial.new()
+	m.shader = sh
+	vignette.material = m
+	add_child(vignette)
+	move_child(vignette, hud.get_index())
 	_build_overlays()
 	hud.visible = false
 	_show_only(null)
@@ -130,6 +152,7 @@ static func _button(text: String, alt: bool, cb: Callable, parent: Node) -> Butt
 	# keyboard is handled globally: a focused button would eat Space / Enter mid-run
 	b.focus_mode = Control.FOCUS_NONE
 	b.pressed.connect(cb)
+	b.pressed.connect(Sfx.ui.bind("ui_click"))
 	parent.add_child(b)
 	return b
 
@@ -318,6 +341,8 @@ func hide_all() -> void:
 
 func show_hud(on: bool) -> void:
 	hud.visible = on
+	_hurt_t = 0.0
+	(vignette.material as ShaderMaterial).set_shader_parameter("amount", 0.0)
 	if on:
 		_slots_key = ""
 		for d in _dmg:
@@ -450,6 +475,12 @@ func play_unlock(id: String) -> void:
 	_banner_t = 2.4
 	flash.color.a = 0.35
 
+func hurt_flash() -> void:
+	_hurt_t = 1.0
+
+func win_flash() -> void:
+	flash.color = Color(1, 0.95, 0.8, 0.6)
+
 func update_hud(w: World, cam: Camera3D, dt: float) -> void:
 	_set_fill(xp_fill, w.xp / Data.xp_to_next(w.level))
 	lvl.text = "Lv %d" % w.level
@@ -502,6 +533,10 @@ func update_hud(w: World, cam: Camera3D, dt: float) -> void:
 		banner.modulate.a = clampf(minf(_banner_t / 0.5, (2.4 - _banner_t) / 0.2), 0.0, 1.0)
 		banner.scale = Vector2.ONE * (1.0 + 0.08 * maxf(0.0, _banner_t - 2.1) / 0.3)
 	flash.color.a = maxf(0.0, flash.color.a - dt * 0.7)
+	_hurt_t = maxf(0.0, _hurt_t - dt * 4.0)
+	var frac := w.player.hp / w.player.max_hp
+	var low := 0.0 if frac >= 0.3 or w.player.hp <= 0.0 else (1.0 - frac / 0.3) * (0.55 + 0.25 * sin(w.time * 7.0))
+	(vignette.material as ShaderMaterial).set_shader_parameter("amount", maxf(_hurt_t * 0.8, low))
 	_update_dmg(cam, dt)
 
 func _quest_status(q: Quests.State) -> Array:

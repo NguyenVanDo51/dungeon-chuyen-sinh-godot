@@ -185,7 +185,7 @@ static func damage(w: World, i: int, amount: float) -> void:
 			w.on_boss_killed()
 			return
 		# quests see it gone → success; puff but no loot / kill count
-		w.events.append({ t = "kill", x = e.x[i], z = e.z[i], type = t })
+		w.events.append({ t = "kill", x = e.x[i], z = e.z[i], type = t, elite = e.elite[i] == 1 })
 		if role == "quest":
 			e.kill(i)
 			return

@@ -14,7 +14,7 @@ Gốc so sánh: TS commit `16a1087` (2026-11-04).
 - 8 vũ khí + 6 chỉ số, mỗi vũ khí 1 kỹ năng ẩn; 4 loại nhiệm vụ; 4 vật phẩm.
 - Vàng, cửa hàng (mua nhân vật, 6 nâng cấp vĩnh viễn), lưu tiến trình `user://meta.json`.
 
-Phím: `WASD`/mũi tên di chuyển · `Space` kỹ năng · `1 2 3` chọn thẻ · `Esc` tạm dừng / quay lại · `Enter` chọn / bắt đầu.
+Phím: `WASD`/mũi tên di chuyển · `Space` kỹ năng · `1 2 3` chọn thẻ · `Esc` tạm dừng / quay lại · `Enter` chọn / bắt đầu · `M` tắt/bật tiếng.
 
 ## Thay đổi nội dung (không đụng code)
 | Muốn đổi | Sửa ở |
@@ -29,6 +29,11 @@ Phím: `WASD`/mũi tên di chuyển · `Space` kỹ năng · `1 2 3` chọn th�
 | Boss + đòn đánh | `scripts/data/bosses.gd` |
 | Vũ khí (số) | `scripts/data/items.gd`; logic 1 file/vũ khí `scripts/game/weapons/*.gd`, đăng ký ở `scripts/game/weapons.gd` |
 | Cân bằng chung, vàng, nhiệm vụ, vật phẩm | `scripts/data/data.gd` |
+| Âm thanh 1 sự kiện | thay / thêm file `.ogg`/`.wav` trong `assets/sfx/default/<slot>/` (nhiều file = chọn ngẫu nhiên). Âm lượng từng slot: `content/styles/sfx_default.tres` (`gain_db`) |
+| Nhạc nền | `assets/music/default/menu|combat|boss.ogg` (tự lặp; thiếu file = im lặng) |
+| Bộ âm thanh khác cho 1 style | copy `sfx_default.tres`, đổi `folder`, gán vào `sfx` của style |
+
+Slot âm thanh + sự kiện nào phát slot nào: `scripts/render/sfx.gd` (`SLOTS`, `on_event`). Âm tổng hợp sinh lại: `godot --headless --path . -s tools/gen_sfx.gd`.
 
 Style gồm: `HeroSkin` (model, clip idle/run/attack, node ẩn, chiều cao, màu x-ray) · `MonsterSkin` (model + clip chạy, chiều cao, tốc độ anim, màu nhuộm / phát sáng; `slime` = dựng bằng code) · `BossSkin` · `ThemeSkin` (tile sàn/tường/cột/đuốc/cửa, ánh sáng, sương, màu rune) · `FxSkin` (bảng màu hiệu ứng, model kiếm bay). Định nghĩa: `scripts/style/*.gd`.
 
@@ -61,7 +66,7 @@ Khác bản TS: thanh máu boss chia cho máu lúc xuất hiện (TS chia 9000 n
 - `godot --path . -- keytest fresh god give=holySword:4,might:1`: bơm phím Enter / 1 2 / W / D / Space / Esc, in `KEYTEST PASS|FAIL`.
 
 ## Cờ debug (sau `--`)
-`seed=123` · `char=archer` · `mode=dungeon floor=2` · `style=quaternius` · `fresh` (bỏ qua file lưu) · `unlock` (mở mọi tầng / nhân vật) · `god` · `boss` (2 s trước boss) · `enemies=300` · `give=fireball:5,haste:1` · `hidden=all` · `lock=fireball,haste` · `quest=bounce|hold|crystal|thief` · `hp=3` · `fps` · `bot` · `autostart` · `shots=DIR shot_at=5,30 quit_at=40` · `shot_mode=levelUp|end` · `showcase` (xem dàn quái) · `cam=30 pitch=55`
+`seed=123` · `char=archer` · `mode=dungeon floor=2` · `style=quaternius` · `fresh` (bỏ qua file lưu) · `unlock` (mở mọi tầng / nhân vật) · `god` · `boss` (2 s trước boss) · `enemies=300` · `give=fireball:5,haste:1` · `hidden=all` · `lock=fireball,haste` · `quest=bounce|hold|crystal|thief` · `hp=3` · `fps` · `bot` · `autostart` · `shots=DIR shot_at=5,30 quit_at=40` · `shot_mode=levelUp|end` · `showcase` (xem dàn quái) · `cam=30 pitch=55` · `mute` · `sfx_stats` (in số lần phát mỗi slot khi hết ván)
 
 Xuất bản (export): thêm `*.txt` vào "Filters to export non-resource files" để map đi kèm.
 

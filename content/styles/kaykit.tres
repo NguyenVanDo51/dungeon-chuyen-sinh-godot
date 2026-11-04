@@ -1,5 +1,6 @@
 [gd_resource type="Resource" script_class="Style" format=3]
 
+[ext_resource type="Resource" path="res://content/styles/sfx_default.tres" id="9_sfx"]
 [ext_resource type="Script" path="res://scripts/style/boss_skin.gd" id="1_bsv3e"]
 [ext_resource type="Script" path="res://scripts/style/fx_skin.gd" id="2_swflv"]
 [ext_resource type="Script" path="res://scripts/style/hero_skin.gd" id="3_goc4n"]
@@ -108,3 +109,4 @@ monsters = Array[ExtResource("4_d0psi")]([SubResource("Resource_ojwe4"), SubReso
 bosses = Array[ExtResource("1_bsv3e")]([SubResource("Resource_q58eo")])
 themes = Array[ExtResource("6_lykuu")]([SubResource("Resource_ole7r")])
 fx = SubResource("Resource_i8208")
+sfx = ExtResource("9_sfx")

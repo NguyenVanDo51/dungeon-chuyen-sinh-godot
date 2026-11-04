@@ -2,11 +2,15 @@ extends Node
 ## game shell: scene, camera, input, meta + run lifecycle; World does the rules, views draw it (style = the look)
 ## debug args (after `--`): seed=123 god boss enemies=300 give=fireball:5,haste:1 hidden=all quest=bounce lock=a,b
 ##   char=archer mode=dungeon floor=2 style=quaternius fresh (ignore the save) unlock (all floors / chars)
-##   bot (autoplay) autostart shots=DIR shot_at=5,30 quit_at=60 fps
+##   bot (autoplay) autostart shots=DIR shot_at=5,30 quit_at=60 fps mute (M in game) sfx_stats
 
 const CAM_DIST := 30.0
 const CAM_PITCH := deg_to_rad(55.0)
 const SLOWMO := { seconds = 0.5, scale = 0.3 }
+## frozen frames on heavy hits (logic just skips ticks; sim never sees it)
+const HITSTOP := { elite = 0.05, wrath = 0.07, enrage = 0.12, cooldown = 0.3 }
+## seconds the death / victory moment plays before the end screen
+const END_DELAY := { won = 2.2, lost = 1.4 }
 
 var world: World
 var style: Style
@@ -25,6 +29,10 @@ var player_view: ActorViews.PlayerView
 var hero_views := {}
 var boss_view: ActorViews.BossView
 var vfx: Vfx
+var sfx: Sfx
+var hitstop := 0.0
+var _hitstop_ready := 0.0
+var _end_t := 0.0
 var ui: Ui
 var screens: Screens
 var focus := Vector3.ZERO
@@ -94,11 +102,15 @@ func _on_restart() -> void:
 	begin_run()
 
 func _on_buy(c: String) -> void:
-	if meta.buy(c):
+	var ok := meta.buy(c)
+	sfx.play("ui_buy" if ok else "ui_error")
+	if ok:
 		_save_meta()
 
 func _on_upgrade(id: String) -> void:
-	if meta.upgrade(id):
+	var ok := meta.upgrade(id)
+	sfx.play("ui_buy" if ok else "ui_error")
+	if ok:
 		_save_meta()
 
 func _save_meta() -> void:
@@ -197,6 +209,10 @@ func _build_scene() -> void:
 	vfx = Vfx.new()
 	add_child(vfx)
 	vfx.build(style.fx)
+	sfx = Sfx.new()
+	add_child(sfx)
+	sfx.build(style.sfx if style.sfx else SfxSkin.new())
+	Sfx.set_muted(flags.has("mute"))
 	print("scene built in %d ms" % (Time.get_ticks_msec() - t0))
 
 ## level mesh, light and fog follow the World's map theme; doors follow its grid
@@ -304,6 +320,8 @@ func begin_run() -> void:
 	unlock_queue.clear()
 	slowmo = 0.0
 	end_shown = false
+	_end_t = 0.0
+	hitstop = 0.0
 	vfx.reset()
 	boss_view.reset()
 	started = true
@@ -329,6 +347,7 @@ func _on_card(i: int) -> void:
 	if world.paused:
 		return
 	world.choose_offer(i)
+	sfx.play("ui_card")
 	if world.state == "levelUp":
 		ui.show_level_up(world)
 	else:
@@ -344,8 +363,12 @@ func _unhandled_input(e: InputEvent) -> void:
 		return
 	var k: Key = e.physical_keycode
 	if screens.mode != "none" and screens.mode != "pause" and screens.handle_key(k):
+		sfx.play("ui_back" if k == KEY_ESCAPE else "ui_click")
 		return
-	if k == KEY_ESCAPE:
+	if k == KEY_M:
+		Sfx.set_muted(not AudioServer.is_bus_mute(0))
+	elif k == KEY_ESCAPE:
+		sfx.play("ui_back")
 		_toggle_pause()
 	elif k == KEY_SPACE and started and screens.mode == "none" and ui.mode == "none" and world.state == "playing":
 		skill_pressed = true
@@ -363,7 +386,9 @@ func _read_move() -> Array:
 func _process(delta: float) -> void:
 	var dt := minf(delta, Data.BALANCE.dt_max)
 	_measure(delta)
-	if started:
+	var stopped := hitstop > 0.0
+	hitstop = maxf(0.0, hitstop - delta)
+	if started and not stopped:
 		var playable := not world.paused and world.state == "playing"
 		var scaled := dt * SLOWMO.scale if slowmo > 0.0 else dt
 		# slow-mo only burns while the world actually runs
@@ -386,12 +411,17 @@ func _process(delta: float) -> void:
 	if started and screens.mode == "none" and ui.mode == "none" and not unlock_queue.is_empty() and world.state == "playing" and not world.paused:
 		var id: String = unlock_queue.pop_front()
 		ui.play_unlock(id)
+		sfx.play("hidden_unlock")
 		vfx.unlock_burst(world.player.x, world.player.z)
 		slowmo = SLOWMO.seconds
 	# started: an abandoned run left in levelUp must not pop its cards over the menu
 	if started and world.state == "levelUp" and ui.mode == "none" and screens.mode == "none" and not bot:
 		ui.show_level_up(world)
 	if started and (world.state == "won" or world.state == "lost") and not end_shown:
+		_end_t += delta
+		if _end_t < END_DELAY[world.state]:
+			_finish_frame(dt, stopped)
+			return
 		end_shown = true
 		ui.hide_all()
 		ui.show_hud(false)
@@ -405,7 +435,12 @@ func _process(delta: float) -> void:
 		screens.show_end(world, Screens.end_actions(won, d, last))
 		if flags.has("bot"):
 			print("RUN END: %s at %s lv%d kills%d" % [world.state, Ui.fmt_time(world.time), world.level, world.kills])
-	var frozen := world.paused or world.state != "playing"
+		if flags.has("sfx_stats"):
+			print("SFX played %s throttled %d" % [sfx.played, sfx.throttled])
+	_finish_frame(dt, stopped)
+
+func _finish_frame(dt: float, stopped: bool) -> void:
+	var frozen := world.paused or world.state != "playing" or stopped
 	var vdt := 0.0 if frozen else (dt * SLOWMO.scale if slowmo > 0.0 else dt)
 	player_view.update(world.player, vdt)
 	enemy_view.update(world.enemies, world.time)
@@ -416,7 +451,15 @@ func _process(delta: float) -> void:
 	if started and ui.hud.visible:
 		ui.update_hud(world, cam, dt)
 	_follow(dt)
+	sfx.update(world if started else null, _music_track(), dt)
 	_screenshots()
+
+func _music_track() -> String:
+	if not started:
+		return "menu"
+	if world.state != "playing" and world.state != "levelUp":
+		return ""
+	return "boss" if world.boss != null else "combat"
 
 func _handle_events() -> void:
 	for ev in world.events:
@@ -438,9 +481,31 @@ func _handle_events() -> void:
 			"enrage":
 				ui.play_alert("%s CUỒNG NỘ!" % String(world.boss_def.name).to_upper())
 				shake += 0.8
+				_freeze(HITSTOP.enrage)
 			"bossCast": boss_view.cast(ev.kind)
+			"kill":
+				if ev.elite:
+					_freeze(HITSTOP.elite)
+					shake += 0.25
+			"skill":
+				if ev.id != "roll":
+					_freeze(HITSTOP.wrath)
+			"bossSpawn": shake += 0.5
+			"playerHurt": ui.hurt_flash()
+			"win":
+				shake += 1.0
+				ui.win_flash()
 		vfx.on_event(ev)
+		sfx.on_event(ev)
 	world.events.clear()
+
+## cooldown: an elite wave must not stutter frame after frame
+func _freeze(s: float) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now < _hitstop_ready:
+		return
+	hitstop = maxf(hitstop, s)
+	_hitstop_ready = now + s + HITSTOP.cooldown
 
 func _follow(dt: float, snap := false) -> void:
 	var k := 1.0 if snap else 1.0 - exp(-8.0 * dt)
@@ -486,6 +551,8 @@ func _screenshots() -> void:
 		return
 	if not flags.has("shots"):
 		if flags.has("quit_at") and world.time >= float(flags.quit_at):
+			if flags.has("sfx_stats"):
+				print("SFX played %s throttled %d" % [sfx.played, sfx.throttled])
 			get_tree().quit()
 		return
 	if _shot_at.size() > 0 and world.time >= _shot_at[0]:

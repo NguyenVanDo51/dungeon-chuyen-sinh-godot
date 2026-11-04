@@ -12,3 +12,7 @@ Slime: dựng bằng code. Asset KayKit copy từ `../dungeon-chuyen-sinh/public
 
 ## Quái style `quaternius` (Quaternius)
 Orc, Orc_Skull, Demon: **Quaternius — Ultimate Monsters** (https://quaternius.com/packs/ultimatemonsters.html), license **CC0**.
+
+## Âm thanh
+- **Kenney** — [Impact Sounds](https://kenney.nl/assets/impact-sounds), [RPG Audio](https://kenney.nl/assets/rpg-audio), [Interface Sounds](https://kenney.nl/assets/interface-sounds), license **CC0**. File `assets/sfx/default/*/k_*.ogg` (tên gốc sau `k_`).
+- `assets/sfx/default/*/synth_*.wav`: tổng hợp bằng code, `tools/gen_sfx.gd`.

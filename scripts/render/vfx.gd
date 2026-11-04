@@ -225,11 +225,17 @@ func on_event(ev: Dictionary) -> void:
 				fx.mesh.position = Vector3(ev.x, 0.2, ev.z)
 				shake_req += 0.3
 		"kill":
-			for k in 6:
+			var big: bool = ev.get("elite", false)
+			for k in 18 if big else 6:
 				if _sparks.size() >= SPARKS:
 					break
 				var a := randf() * TAU
-				_sparks.append([Vector3(ev.x, 0.6, ev.z), Vector3(cos(a) * 4.0, 3.0 + randf() * 3.0, sin(a) * 4.0), 0.45])
+				var sp := (7.0 if big else 4.0) * (0.6 + randf() * 0.4)
+				_sparks.append([Vector3(ev.x, 0.6, ev.z), Vector3(cos(a) * sp, 3.0 + randf() * (5.0 if big else 3.0), sin(a) * sp), 0.6 if big else 0.45])
+			if big:
+				var fx := _spawn_fx("explode", fx_skin.gold, Gfx.GLOW.explode, 0.3)
+				fx.r = 2.5
+				fx.mesh.position = Vector3(ev.x, 0.3, ev.z)
 
 func _xf(pos: Vector3, yaw := 0.0, s := 1.0) -> Transform3D:
 	return Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * s), pos)

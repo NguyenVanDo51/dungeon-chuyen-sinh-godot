@@ -29,6 +29,7 @@ func update(w: World, level: int, hidden: bool, dt: float) -> void:
 	var base := atan2(w.enemies.z[t] - p.z, w.enemies.x[t] - p.x)
 	var v: float = L.speed * w.mods.projectile_speed_mul
 	var cnt := int(L.count)
+	w.events.append({ t = "cast", id = "fireball" })
 	for k in cnt:
 		var a := base + (k - (cnt - 1) / 2.0) * 0.25
 		var b := Projectiles.make("fireball", p.x, p.z, cos(a) * v, sin(a) * v, L.damage * w.mods.damage_mul, 1.0, BALL.radius, BALL.life)
