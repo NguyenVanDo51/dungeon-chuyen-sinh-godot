@@ -466,20 +466,20 @@ func _handle_events() -> void:
 		match ev.t:
 			"slash", "shot": player_view.play_attack()
 			"questAppear": ui.play_alert("★ Nhiệm vụ: %s!" % Data.QUEST_NAMES[ev.kind])
-			"questEnd": ui.play_alert(("✔ %s — hoàn thành! +XP" if ev.success else "✘ %s — thất bại") % Data.QUEST_NAMES[ev.kind])
+			"questEnd": ui.play_alert(("✔ %s — hoàn thành! +XP" if ev.success else "✘ %s — thất bại") % Data.QUEST_NAMES[ev.kind], "good" if ev.success else "bad")
 			"pickup": ui.add_text(world.player.x, world.player.z, Data.PICKUP_NAMES[ev.kind])
 			"hit": ui.add_damage(ev.x, ev.z, ev.amount)
 			"hiddenUnlocked": unlock_queue.append(ev.id)
 			"bossWarn":
 				var room: bool = world.rules.boss == "enterRoom"
-				ui.play_alert("⚠ Hết giờ! Sắp bị kéo vào phòng boss" if ev.pull else ("⚠ Phòng boss! Ở lại để đánh thức boss" if room else "⚠ Boss thức tỉnh!"))
+				ui.play_alert("⚠ Hết giờ! Sắp bị kéo vào phòng boss" if ev.pull else ("⚠ Phòng boss! Ở lại để đánh thức boss" if room else "⚠ Boss thức tỉnh!"), "boss")
 			"bossArena":
-				ui.play_alert("☠ Cửa đã khoá!" if world.rules.boss == "enterRoom" and not ev.pull else "☠ Bị kéo vào phòng boss!")
+				ui.play_alert("☠ Cửa đã khoá!" if world.rules.boss == "enterRoom" and not ev.pull else "☠ Bị kéo vào phòng boss!", "boss")
 				_follow(0.0, true)
 				shake += 0.6
 			"doors": dungeon.set_doors(ev.open)
 			"enrage":
-				ui.play_alert("%s CUỒNG NỘ!" % String(world.boss_def.name).to_upper())
+				ui.play_alert("%s CUỒNG NỘ!" % String(world.boss_def.name).to_upper(), "bad")
 				shake += 0.8
 				_freeze(HITSTOP.enrage)
 			"bossCast": boss_view.cast(ev.kind)
